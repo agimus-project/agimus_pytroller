@@ -1,0 +1,9 @@
+<library path="agimus_pytroller">
+    <class name="agimus_pytroller/AgimusPytroller"
+          type="agimus_pytroller::AgimusPytroller"
+          base_class_type="controller_interface::ControllerInterface">
+    <description>
+        Python ros2_controller for Agimus
+    </description>
+    </class>
+  </library>
