@@ -181,6 +181,8 @@ AgimusPytroller::update(const rclcpp::Time &time,
         // If false is returned this means solver did not finish on time
         timeout_reached = !solver_stop_cv_.wait_until(
             lk, timeout, [this] { return solver_finished_; });
+        // Reset the flag
+        solver_finished_ = false;
         local_python_had_exception = python_had_exception_;
       }
 
@@ -201,16 +203,10 @@ AgimusPytroller::update(const rclcpp::Time &time,
     }
 
     {
-      std::lock_guard lk(solver_stop_mtx_);
-      solver_finished_ = false;
-    }
-
-    {
       std::lock_guard lk(solver_start_mtx_);
       start_solver_ = true;
     }
     solver_start_cv_.notify_one();
-
   }
   return controller_interface::return_type::OK;
 }
