@@ -1,5 +1,8 @@
+import importlib
+
 import numpy as np
 import pinocchio as pin
+from rclpy.serialization import deserialize_message
 
 
 class ControllerImpl:
@@ -27,7 +30,33 @@ class ControllerImpl:
         self._q_init = np.zeros(self._pin_model.nq)
         self._first_call = True
 
-    def on_update(self, period: float, state: np.array) -> np.array:
+        self._last_time = None
+
+        self._topic_map = {}
+
+    def build_message_map(self, topic_name, topic_type, callback) -> None:
+        if topic_name not in self._topic_map:
+            mt = topic_type.split("/")
+            messagetype = getattr(importlib.import_module(".".join(mt[:2])), mt[-1])
+            self._topic_map[topic_name] = (type(messagetype()), getattr(self, callback))
+
+    def on_message(self, msg_data, topic_name) -> None:
+        topic_data = self._topic_map[topic_name]
+        # First element in the tuple is message type to deserialize
+        msg = deserialize_message(msg_data, topic_data[0])
+        # Second element is a function callback
+        topic_data[1](msg)
+
+    def dummy_topic_cb(self, msg):
+        print(msg, flush=True)
+
+    def jo_mama_cb(self, msg):
+        print(msg, flush=True)
+
+    def jo_mama_int_cb(self, msg):
+        print(msg, flush=True)
+
+    def on_update(self, state: np.array) -> np.array:
         nq = self._pin_model.nq
         nv = self._pin_model.nv
 
@@ -38,4 +67,5 @@ class ControllerImpl:
         out = (
             -self._p_gains * (state[:nq] - self._q_init) - self._d_gains * (state[-nv:])
         )
+
         return out

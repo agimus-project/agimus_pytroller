@@ -18,3 +18,21 @@ agimus_pytroller:
     default_value: 2
     description: "How many update cycles to wait before expecting results of the python controller."
     read_only: true
+  subscribed_topics:
+    type: string_array
+    default_value: []
+    description: "Names of subscribed topics."
+    read_only: true
+  __map_subscribed_topics:
+    topic_name:
+      type: string
+      description: "Names of subscribed topic."
+      read_only: true
+    topic_type:
+      type: string
+      description: "Type of the subscribed topic."
+      read_only: true
+    python_function_name:
+      type: string
+      description: "Name of the python function to call on received data."
+      read_only: true

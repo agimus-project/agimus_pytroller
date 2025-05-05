@@ -11,11 +11,13 @@
 
 #include <pybind11/embed.h>
 #include <pybind11/numpy.h>
+#include <pybind11/pytypes.h>
 
 #include "controller_interface/helpers.hpp"
 #include "hardware_interface/loaned_command_interface.hpp"
 #include "rclcpp/logging.hpp"
 #include "rclcpp/wait_for_message.hpp"
+#include "rclcpp/serialization.hpp"
 #include "std_msgs/msg/string.hpp"
 
 namespace py = pybind11;
@@ -87,6 +89,70 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
   } catch (const std::exception &e) {
     RCLCPP_ERROR(get_node()->get_logger(),
                  "Filed to find 'ControllerImpl.on_update': %s\n", e.what());
+    return controller_interface::CallbackReturn::ERROR;
+  }
+
+  try {
+    on_message_python_funct_ = controller_object_.attr("on_message");
+  } catch (const std::exception &e) {
+    RCLCPP_ERROR(get_node()->get_logger(),
+                 "Filed to find 'ControllerImpl.on_message': %s\n", e.what());
+    return controller_interface::CallbackReturn::ERROR;
+  }
+
+  for (const std::string topic_name : params_.subscribed_topics) {
+    const auto &topic_params = params_.subscribed_topics_map.at(topic_name);
+
+    topic_subscribers_.push_back(get_node()->create_generic_subscription(
+        topic_params.topic_name, topic_params.topic_type,
+        rclcpp::SystemDefaultsQoS(),
+        [this, topic_params](std::shared_ptr<rclcpp::SerializedMessage> msg) {
+          py::bytes msg_py_bytes(reinterpret_cast<const char *>(
+                                     msg->get_rcl_serialized_message().buffer),
+                                 msg->size());
+          try {
+            std::lock_guard py_lk(python_call_mtx_);
+            on_message_python_funct_(msg_py_bytes, topic_params.topic_name);
+          } catch (const std::exception &e) {
+            RCLCPP_ERROR(
+                get_node()->get_logger(),
+                "Error calling message callback for topic: %s. Reason: %s\n ",
+                topic_params.topic_name.c_str(), e.what());
+          }
+        }));
+
+    // Build the message map for given topic to avoid dynamic allocations
+    try {
+      controller_object_.attr("build_message_map")(
+          topic_params.topic_name, topic_params.topic_type,
+          topic_params.python_function_name);
+    } catch (const std::exception &e) {
+      RCLCPP_ERROR(get_node()->get_logger(),
+                   "Filed to find 'ControllerImpl.on_message': %s\n", e.what());
+      return controller_interface::CallbackReturn::ERROR;
+    }
+  }
+
+  // Without "priming" the controller, first message received takes enough time
+  // to stall it for several calls
+  try {
+    controller_object_.attr("build_message_map")(
+        "dummy_topic", "std_msgs/msg/String", "dummy_topic_cb");
+    auto message = std_msgs::msg::String();
+    message.data = "dummy_text";
+
+    rclcpp::Serialization<std_msgs::msg::String> msg_serializer;
+    rclcpp::SerializedMessage serialized_msg;
+    msg_serializer.serialize_message(&message, &serialized_msg);
+    py::bytes msg_py_bytes(
+        reinterpret_cast<const char *>(
+            serialized_msg.get_rcl_serialized_message().buffer),
+        serialized_msg.size());
+
+    on_message_python_funct_(msg_py_bytes, "dummy_topic");
+  } catch (const std::exception &e) {
+    RCLCPP_ERROR(get_node()->get_logger(),
+                 "Filed to prime 'ControllerImpl.on_message': %s\n", e.what());
     return controller_interface::CallbackReturn::ERROR;
   }
 
@@ -232,17 +298,20 @@ void AgimusPytroller::py_control_spinner() {
 
       try {
         // TODO ensure there is no way to preallocate commands np.array
-        const py::array_t<double> py_commands =
-            on_update_python_funct_(*py_states_);
-        const auto command_buffer = py_commands.request();
-        const double *command_ptr = static_cast<double *>(command_buffer.ptr);
-
         {
-          std::lock_guard lk(solver_stop_mtx_);
-          python_had_exception_ = false;
-          solver_finished_ = true;
-          for (std::size_t i = 0; i < last_commands_.size(); i++) {
-            last_commands_[i] = command_ptr[i];
+          std::lock_guard py_lk(python_call_mtx_);
+          const py::array_t<double> py_commands =
+              on_update_python_funct_(*py_states_);
+          const auto command_buffer = py_commands.request();
+          const double *command_ptr = static_cast<double *>(command_buffer.ptr);
+
+          {
+            std::lock_guard lk(solver_stop_mtx_);
+            python_had_exception_ = false;
+            solver_finished_ = true;
+            for (std::size_t i = 0; i < last_commands_.size(); i++) {
+              last_commands_[i] = command_ptr[i];
+            }
           }
         }
 
