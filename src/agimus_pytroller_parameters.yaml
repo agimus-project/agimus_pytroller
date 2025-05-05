@@ -13,3 +13,8 @@ agimus_pytroller:
     default_value: []
     description: "Order of command interfaces."
     read_only: true
+  python_downsample_factor:
+    type: int
+    default_value: 2
+    description: "How many update cycles to wait before expecting results of the python controller."
+    read_only: true

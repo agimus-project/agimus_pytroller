@@ -8,6 +8,7 @@ project(agimus_pytroller LANGUAGES CXX)
 #
 # Options
 #
+option(BUILD_SHARED_LIBS "Build using shared libraries" ON)
 
 cmake_policy(SET CMP0094 NEW)
 set(Python3_FIND_UNVERSIONED_NAMES FIRST)
