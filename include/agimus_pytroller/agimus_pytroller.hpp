@@ -2,6 +2,7 @@
 #define AGIMUS_PYTROLLER_LOCAL__AGIMUS_PYTROLLER_LOCAL_HPP_
 
 #include <memory>
+#include <queue>
 #include <string>
 #include <vector>
 
@@ -59,7 +60,6 @@ protected:
   std::unique_ptr<std::thread> control_spinner_thread_;
   std::mutex solver_start_mtx_;
   std::mutex solver_stop_mtx_;
-  std::mutex python_call_mtx_;
   std::condition_variable solver_start_cv_;
   std::condition_variable solver_stop_cv_;
   std::atomic_bool cancellation_token_ = false;
@@ -79,6 +79,7 @@ protected:
   py::object on_message_python_funct_;
   py::scoped_interpreter guard_;
 
+  std::queue<std::pair<std::string, std::vector<char>>> topic_queue_;
 
   std::vector<std::shared_ptr<rclcpp::GenericSubscription>> topic_subscribers_;
 
@@ -93,7 +94,6 @@ protected:
 
   std::vector<std::reference_wrapper<hardware_interface::LoanedStateInterface>>
       ordered_state_interfaces_;
-
 };
 
 } // namespace agimus_pytroller

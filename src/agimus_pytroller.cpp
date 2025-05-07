@@ -16,8 +16,8 @@
 #include "controller_interface/helpers.hpp"
 #include "hardware_interface/loaned_command_interface.hpp"
 #include "rclcpp/logging.hpp"
-#include "rclcpp/wait_for_message.hpp"
 #include "rclcpp/serialization.hpp"
+#include "rclcpp/wait_for_message.hpp"
 #include "std_msgs/msg/string.hpp"
 
 namespace py = pybind11;
@@ -100,32 +100,35 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
     return controller_interface::CallbackReturn::ERROR;
   }
 
-  for (const std::string topic_name : params_.subscribed_topics) {
-    const auto &topic_params = params_.subscribed_topics_map.at(topic_name);
+  for (const std::string subscriber_name : params_.subscribed_topics) {
+    const auto &topic_params =
+        params_.subscribed_topics_map.at(subscriber_name);
+    const auto &topic_type = topic_params.topic_type;
+    const auto topic_name = topic_params.topic_name;
 
     topic_subscribers_.push_back(get_node()->create_generic_subscription(
-        topic_params.topic_name, topic_params.topic_type,
-        rclcpp::SystemDefaultsQoS(),
-        [this, topic_params](std::shared_ptr<rclcpp::SerializedMessage> msg) {
-          py::bytes msg_py_bytes(reinterpret_cast<const char *>(
-                                     msg->get_rcl_serialized_message().buffer),
-                                 msg->size());
+        topic_name, topic_type, rclcpp::SystemDefaultsQoS(),
+        [this, topic_name](std::shared_ptr<rclcpp::SerializedMessage> msg) {
           try {
-            std::lock_guard py_lk(python_call_mtx_);
-            on_message_python_funct_(msg_py_bytes, topic_params.topic_name);
+            const auto serialized_msg = msg->get_rcl_serialized_message();
+            std::vector<char> payload(serialized_msg.buffer,
+                                      serialized_msg.buffer +
+                                          serialized_msg.buffer_length);
+            std::pair<std::string, std::vector<char>> message_data = {
+                topic_name, payload};
+            topic_queue_.push(message_data);
           } catch (const std::exception &e) {
             RCLCPP_ERROR(
                 get_node()->get_logger(),
                 "Error calling message callback for topic: %s. Reason: %s\n ",
-                topic_params.topic_name.c_str(), e.what());
+                topic_name.c_str(), e.what());
           }
         }));
 
     // Build the message map for given topic to avoid dynamic allocations
     try {
       controller_object_.attr("build_message_map")(
-          topic_params.topic_name, topic_params.topic_type,
-          topic_params.python_function_name);
+          topic_name, topic_type, topic_params.python_function_name);
     } catch (const std::exception &e) {
       RCLCPP_ERROR(get_node()->get_logger(),
                    "Filed to find 'ControllerImpl.on_message': %s\n", e.what());
@@ -149,10 +152,12 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
             serialized_msg.get_rcl_serialized_message().buffer),
         serialized_msg.size());
 
-    on_message_python_funct_(msg_py_bytes, "dummy_topic");
+    on_message_python_funct_("dummy_topic", msg_py_bytes);
   } catch (const std::exception &e) {
-    RCLCPP_ERROR(get_node()->get_logger(),
-                 "Filed to prime 'ControllerImpl.on_message': %s\n", e.what());
+    RCLCPP_ERROR(
+        get_node()->get_logger(),
+        "Filed perform priming call on 'ControllerImpl.on_message()': %s\n",
+        e.what());
     return controller_interface::CallbackReturn::ERROR;
   }
 
@@ -281,14 +286,20 @@ void AgimusPytroller::py_control_spinner() {
   {
     while (!cancellation_token_) {
       std::unique_lock lk(solver_start_mtx_);
-      solver_start_cv_.wait(
-          lk, [this] { return start_solver_ || cancellation_token_; });
+      solver_start_cv_.wait(lk, [this] {
+        // Since this is an implicit loop, update only one message at the time
+        if (!topic_queue_.empty()) {
+          const auto data = topic_queue_.front();
+          py::bytes py_payload(data.second.data(), data.second.size());
+          on_message_python_funct_(data.first, py_payload);
+          topic_queue_.pop();
+        }
+        return start_solver_ || cancellation_token_;
+      });
       // If controller was stopped, stop the loop
       if (cancellation_token_) {
         break;
       }
-      start_solver_ = false;
-
       // TODO find cleaner way to handle rewriting of the data
       auto state_buffer = py_states_->request();
       double *state_ptr = static_cast<double *>(state_buffer.ptr);
@@ -299,7 +310,6 @@ void AgimusPytroller::py_control_spinner() {
       try {
         // TODO ensure there is no way to preallocate commands np.array
         {
-          std::lock_guard py_lk(python_call_mtx_);
           const py::array_t<double> py_commands =
               on_update_python_funct_(*py_states_);
           const auto command_buffer = py_commands.request();
