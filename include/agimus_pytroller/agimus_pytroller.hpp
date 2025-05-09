@@ -58,9 +58,7 @@ public:
 protected:
   void py_control_spinner();
   std::unique_ptr<std::thread> control_spinner_thread_;
-  std::mutex solver_start_mtx_;
   std::mutex solver_stop_mtx_;
-  std::condition_variable solver_start_cv_;
   std::condition_variable solver_stop_cv_;
   std::atomic_bool cancellation_token_ = false;
 
@@ -68,8 +66,9 @@ protected:
 
   unsigned int cycle_ = 0;
   bool first_python_call_ = true;
-  bool start_solver_ = false;
+  std::atomic_bool start_solver_ = false;
   bool solver_finished_ = false;
+  std::vector<double> last_state_;
   std::vector<double> last_commands_;
   bool python_had_exception_ = false;
 
