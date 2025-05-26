@@ -36,3 +36,21 @@ agimus_pytroller:
       type: string
       description: "Name of the python function to call on received data."
       read_only: true
+  published_topics:
+    type: string_array
+    default_value: []
+    description: "Names of published topics."
+    read_only: true
+  __map_published_topics:
+    topic_name:
+      type: string
+      description: "Names of published topic."
+      read_only: true
+    topic_type:
+      type: string
+      description: "Type of the published topic."
+      read_only: true
+    python_msg_getter_name:
+      type: string
+      description: "Name of the python class object to obtain message."
+      read_only: true

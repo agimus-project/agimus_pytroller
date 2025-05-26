@@ -17,6 +17,7 @@
 #include "hardware_interface/loaned_command_interface.hpp"
 #include "rclcpp/logging.hpp"
 #include "rclcpp/serialization.hpp"
+#include "rclcpp/serialized_message.hpp"
 #include "rclcpp/wait_for_message.hpp"
 #include "std_msgs/msg/string.hpp"
 
@@ -131,7 +132,8 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
           topic_name, topic_type, topic_params.python_function_name);
     } catch (const std::exception &e) {
       RCLCPP_ERROR(get_node()->get_logger(),
-                   "Filed to find 'ControllerImpl.on_message': %s\n", e.what());
+                   "Filed to find 'ControllerImpl.build_message_map': %s\n",
+                   e.what());
       return controller_interface::CallbackReturn::ERROR;
     }
   }
@@ -156,9 +158,50 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
   } catch (const std::exception &e) {
     RCLCPP_ERROR(
         get_node()->get_logger(),
-        "Filed perform priming call on 'ControllerImpl.on_message()': %s\n",
+        "Filed to perform priming call on 'ControllerImpl.on_message()': %s\n",
         e.what());
     return controller_interface::CallbackReturn::ERROR;
+  }
+
+  try {
+    on_publish_python_funct_ = controller_object_.attr("on_publish");
+  } catch (const std::exception &e) {
+    RCLCPP_ERROR(get_node()->get_logger(),
+                 "Filed to find 'ControllerImpl.on_publish': %s\n", e.what());
+    return controller_interface::CallbackReturn::ERROR;
+  }
+
+  for (const std::string publisher_name : params_.published_topics) {
+    const auto &topic_params = params_.published_topics_map.at(publisher_name);
+    const auto &topic_type = topic_params.topic_type;
+    const auto topic_name = topic_params.topic_name;
+
+    topic_publishers_.push_back(std::make_pair(
+        topic_name, get_node()->create_generic_publisher(
+                        topic_name, topic_type, rclcpp::SystemDefaultsQoS())));
+
+    // Build the message map for given topic to avoid dynamic allocations
+    try {
+      controller_object_.attr("build_message_map")(
+          topic_name, topic_type, topic_params.python_msg_getter_name);
+    } catch (const std::exception &e) {
+      RCLCPP_ERROR(get_node()->get_logger(),
+                   "Filed to find 'ControllerImpl.build_message_map': %s\n",
+                   e.what());
+      return controller_interface::CallbackReturn::ERROR;
+    }
+
+    // Without "priming" the controller, first message received takes enough
+    // time to stall it for several calls
+    try {
+      py::bytes data = on_publish_python_funct_(topic_name);
+    } catch (const std::exception &e) {
+      RCLCPP_ERROR(
+          get_node()->get_logger(),
+          "Filed perform priming call on 'ControllerImpl.on_publish()': %s\n",
+          e.what());
+      return controller_interface::CallbackReturn::ERROR;
+    }
   }
 
   RCLCPP_INFO(get_node()->get_logger(), "configure successful");
@@ -241,9 +284,11 @@ AgimusPytroller::update(const rclcpp::Time &time,
     if (!first_python_call_) {
       // Convert hertz to nanoseconds
       // const unsigned int offset = static_cast<unsigned int>(
-      //     static_cast<double>(std::nano::den / this->get_update_rate()) * 0.75);
+      //     static_cast<double>(std::nano::den / this->get_update_rate()) *
+      //     0.75);
 
-      //     const auto offset = std::chrono::time_point<std::chrono::nanoseconds>()
+      //     const auto offset =
+      //     std::chrono::time_point<std::chrono::nanoseconds>()
 
       // const auto timeout = std::chrono::system_clock::time_point(
       //     std::chrono::nanoseconds(start + offset));
@@ -346,12 +391,38 @@ void AgimusPytroller::py_control_spinner() {
         }
       }
       solver_stop_cv_.notify_one();
-      // auto end = std::chrono::system_clock::now();
-      // double elapsed =
-      //     std::chrono::duration_cast<std::chrono::duration<double>>(end -
-      //     start)
-      //         .count();
-      // std::cout << elapsed << std::endl;
+
+      for (const auto &[topic_name, publisher] : topic_publishers_) {
+        py::bytes data = on_publish_python_funct_(topic_name);
+
+        // rcl_serialized_message_t serialized_msg =
+        //     rmw_get_zero_initialized_serialized_message();
+        char *serialized_buffer;
+        Py_ssize_t length;
+        if (PYBIND11_BYTES_AS_STRING_AND_SIZE(data.ptr(), &serialized_buffer,
+                                              &length)) {
+          RCLCPP_ERROR(get_node()->get_logger(),
+                       "Filed to obtain serialized message from python for "
+                       "topic '%s'!\n",
+                       topic_name.c_str());
+          continue;
+        }
+        if (length < 0) {
+          RCLCPP_ERROR(get_node()->get_logger(),
+                       "Filed to obtain serialized message from python for "
+                       "topic '%s'!\n",
+                       topic_name.c_str());
+          continue;
+        }
+
+        rclcpp::SerializedMessage serialized_msg(length);
+        std::memcpy(serialized_msg.get_rcl_serialized_message().buffer,
+                    serialized_buffer, length);
+        serialized_msg.get_rcl_serialized_message().buffer_length = length;
+        serialized_msg.get_rcl_serialized_message().buffer_capacity = length;
+
+        publisher->publish(serialized_msg);
+      }
     }
   }
 }

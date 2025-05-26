@@ -76,11 +76,13 @@ protected:
   py::object controller_object_;
   py::object on_update_python_funct_;
   py::object on_message_python_funct_;
+  py::object on_publish_python_funct_;
   py::scoped_interpreter guard_;
 
   std::queue<std::pair<std::string, std::vector<char>>> topic_queue_;
 
   std::vector<std::shared_ptr<rclcpp::GenericSubscription>> topic_subscribers_;
+  std::vector<std::pair<std::string, std::shared_ptr<rclcpp::GenericPublisher>>> topic_publishers_;
 
   std::shared_ptr<ParamListener> param_listener_;
   Params params_;
