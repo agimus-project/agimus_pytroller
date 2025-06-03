@@ -141,7 +141,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
   // to stall it for several calls
   try {
     controller_object_.attr("build_message_map")(
-        "dummy_topic", "std_msgs/msg/String", "__dummy_topic_cb");
+        "dummy_topic", "std_msgs/msg/String", "_dummy_topic_cb");
     auto message = std_msgs::msg::String();
     message.data = "dummy_text";
 
@@ -232,6 +232,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_activate(
   last_state_.resize(params_.state_interfaces.size(), 0.0);
   new_commands_.resize(params_.command_interfaces.size(), 0.0);
   last_commands_.resize(params_.command_interfaces.size(), 0.0);
+  new_commands_rt_.resize(params_.command_interfaces.size(), 0.0);
 
   first_python_call_ = true;
 
@@ -277,7 +278,6 @@ controller_interface::CallbackReturn AgimusPytroller::on_deactivate(
 controller_interface::return_type
 AgimusPytroller::update(const rclcpp::Time &time,
                         const rclcpp::Duration &period) {
-  auto start = std::chrono::system_clock::now();
   cycle_++;
   // Read last results of the controller
   if (cycle_ >= params_.python_downsample_factor || first_python_call_) {
@@ -290,6 +290,9 @@ AgimusPytroller::update(const rclcpp::Time &time,
         // Do not block the thread to wait for spinner to finish
         if (params_.error_on_no_data) {
           if (!solver_finished_) {
+            RCLCPP_ERROR(
+                get_node()->get_logger(),
+                "Python controller did not manage to find solution on time!");
             return controller_interface::return_type::ERROR;
           }
         } else {
@@ -322,7 +325,6 @@ AgimusPytroller::update(const rclcpp::Time &time,
     }
     start_solver_ = true;
   }
-
   if (params_.interpolate_trajectory) {
     // Linear interpolation factor between both trajectories.
     const double alpha = static_cast<double>(cycle_) /
@@ -332,7 +334,6 @@ AgimusPytroller::update(const rclcpp::Time &time,
           (1.0 - alpha) * last_commands_[i] + alpha * new_commands_rt_[i];
       ordered_command_interfaces_[i].get().set_value(interp);
     }
-
   } else {
     for (std::size_t i = 0; i < ordered_command_interfaces_.size(); i++) {
       ordered_command_interfaces_[i].get().set_value(new_commands_rt_[i]);
@@ -345,7 +346,6 @@ AgimusPytroller::update(const rclcpp::Time &time,
 void AgimusPytroller::py_control_spinner() {
   {
     while (!cancellation_token_) {
-      // auto start = std::chrono::system_clock::now();
       while (true) {
         if (!topic_queue_.empty()) {
           const auto data = topic_queue_.front();

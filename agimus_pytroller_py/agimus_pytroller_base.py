@@ -51,7 +51,7 @@ class ControllerImpl(ABC):
         # Second element is a function callback
         topic_data[1](msg)
 
-    def __dummy_topic_cb(self, _: String) -> None:
+    def _dummy_topic_cb(self, _: String) -> None:
         """Dummy publisher used by the C++ implementation to perform first call of
         the ``on_message`` function. Prevents stall of the real time loop, when
         python compiles it to the bytecode.
