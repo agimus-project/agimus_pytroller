@@ -25,7 +25,8 @@ namespace py = pybind11;
 namespace agimus_pytroller {
 AgimusPytroller::AgimusPytroller()
     : controller_interface::ControllerInterface(), guard_() {
-  // TODO check if still needed
+  // Workaround to fix undeclared symbols for NumPy
+  // https://stackoverflow.com/questions/49784583/numpy-import-fails-on-multiarray-extension-library-when-called-from-embedded-pyt
   dlopen("libpython3.10.so", RTLD_NOW | RTLD_GLOBAL);
 }
 
