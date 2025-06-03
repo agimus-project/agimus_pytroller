@@ -54,3 +54,13 @@ agimus_pytroller:
       type: string
       description: "Name of the python class object to obtain message."
       read_only: true
+  error_on_no_data:
+    type: bool
+    default_value: true
+    description: "If set to `true` the controller does not wait for solver lock to be freed and fails if python thread does not manage to produce new commands on time."
+    read_only: true
+  interpolate_trajectory:
+    type: bool
+    default_value: true
+    description: "Linearly interpolate control signals in between downsampling steps."
+    read_only: true

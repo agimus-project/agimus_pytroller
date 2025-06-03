@@ -1,9 +1,5 @@
 #include <dlfcn.h>
 
-// TODO fix imports order
-
-#include "agimus_pytroller/agimus_pytroller.hpp"
-
 #include <memory>
 #include <ratio>
 #include <string>
@@ -19,7 +15,10 @@
 #include "rclcpp/serialization.hpp"
 #include "rclcpp/serialized_message.hpp"
 #include "rclcpp/wait_for_message.hpp"
+
 #include "std_msgs/msg/string.hpp"
+
+#include "agimus_pytroller/agimus_pytroller.hpp"
 
 namespace py = pybind11;
 
@@ -142,7 +141,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
   // to stall it for several calls
   try {
     controller_object_.attr("build_message_map")(
-        "dummy_topic", "std_msgs/msg/String", "dummy_topic_cb");
+        "dummy_topic", "std_msgs/msg/String", "__dummy_topic_cb");
     auto message = std_msgs::msg::String();
     message.data = "dummy_text";
 
@@ -231,6 +230,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_activate(
       std::make_unique<py::array_t<double>>(params_.state_interfaces.size());
 
   last_state_.resize(params_.state_interfaces.size(), 0.0);
+  new_commands_.resize(params_.command_interfaces.size(), 0.0);
   last_commands_.resize(params_.command_interfaces.size(), 0.0);
 
   first_python_call_ = true;
@@ -282,26 +282,19 @@ AgimusPytroller::update(const rclcpp::Time &time,
   // Read last results of the controller
   if (cycle_ >= params_.python_downsample_factor || first_python_call_) {
     if (!first_python_call_) {
-      // Convert hertz to nanoseconds
-      // const unsigned int offset = static_cast<unsigned int>(
-      //     static_cast<double>(std::nano::den / this->get_update_rate()) *
-      //     0.75);
-
-      //     const auto offset =
-      //     std::chrono::time_point<std::chrono::nanoseconds>()
-
-      // const auto timeout = std::chrono::system_clock::time_point(
-      //     std::chrono::nanoseconds(start + offset));
-
       bool timeout_reached = false;
       bool local_python_had_exception;
 
       {
         std::unique_lock lk(solver_stop_mtx_);
-        // If false is returned this means solver did not finish on time
-        // timeout_reached = !solver_stop_cv_.wait_until(
-        //     lk, timeout, [this] { return solver_finished_; });
-        solver_stop_cv_.wait(lk, [this] { return solver_finished_; });
+        // Do not block the thread to wait for spinner to finish
+        if (params_.error_on_no_data) {
+          if (!solver_finished_) {
+            return controller_interface::return_type::ERROR;
+          }
+        } else {
+          solver_stop_cv_.wait(lk, [this] { return solver_finished_; });
+        }
         // Reset the flag
         solver_finished_ = false;
         local_python_had_exception = python_had_exception_;
@@ -319,15 +312,33 @@ AgimusPytroller::update(const rclcpp::Time &time,
     }
     first_python_call_ = false;
 
-    for (std::size_t i = 0; i < ordered_command_interfaces_.size(); i++) {
-      ordered_command_interfaces_[i].get().set_value(last_commands_[i]);
-    }
+    std::copy(new_commands_rt_.begin(), new_commands_rt_.end(),
+              last_commands_.begin());
+    std::copy(new_commands_.begin(), new_commands_.end(),
+              new_commands_rt_.begin());
 
     for (std::size_t i = 0; i < ordered_state_interfaces_.size(); i++) {
       last_state_[i] = ordered_state_interfaces_[i].get().get_value();
     }
     start_solver_ = true;
   }
+
+  if (params_.interpolate_trajectory) {
+    // Linear interpolation factor between both trajectories.
+    const double alpha = static_cast<double>(cycle_) /
+                         static_cast<double>(params_.python_downsample_factor);
+    for (std::size_t i = 0; i < ordered_command_interfaces_.size(); i++) {
+      const double interp =
+          (1.0 - alpha) * last_commands_[i] + alpha * new_commands_rt_[i];
+      ordered_command_interfaces_[i].get().set_value(interp);
+    }
+
+  } else {
+    for (std::size_t i = 0; i < ordered_command_interfaces_.size(); i++) {
+      ordered_command_interfaces_[i].get().set_value(new_commands_rt_[i]);
+    }
+  }
+
   return controller_interface::return_type::OK;
 }
 
@@ -355,12 +366,9 @@ void AgimusPytroller::py_control_spinner() {
       // TODO find cleaner way to handle rewriting of the data
       auto state_buffer = py_states_->request();
       double *state_ptr = static_cast<double *>(state_buffer.ptr);
-      for (std::size_t i = 0; i < last_state_.size(); i++) {
-        state_ptr[i] = last_state_[i];
-      }
+      std::copy(last_state_.begin(), last_state_.end(), state_ptr);
 
       try {
-        // TODO ensure there is no way to preallocate commands np.array
         {
           const py::array_t<double> py_commands =
               on_update_python_funct_(*py_states_);
@@ -372,8 +380,8 @@ void AgimusPytroller::py_control_spinner() {
             std::lock_guard lk(solver_stop_mtx_);
             python_had_exception_ = false;
             solver_finished_ = true;
-            for (std::size_t i = 0; i < last_commands_.size(); i++) {
-              last_commands_[i] = command_ptr[i];
+            for (std::size_t i = 0; i < new_commands_.size(); i++) {
+              new_commands_[i] = command_ptr[i];
             }
           }
         }
@@ -386,7 +394,7 @@ void AgimusPytroller::py_control_spinner() {
           std::lock_guard lk(solver_stop_mtx_);
           python_had_exception_ = true;
           solver_finished_ = true;
-          std::fill(last_commands_.begin(), last_commands_.end(),
+          std::fill(new_commands_.begin(), new_commands_.end(),
                     std::numeric_limits<double>::signaling_NaN());
         }
       }

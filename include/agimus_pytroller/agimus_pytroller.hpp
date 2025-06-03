@@ -70,6 +70,8 @@ protected:
   bool solver_finished_ = false;
   std::vector<double> last_state_;
   std::vector<double> last_commands_;
+  std::vector<double> new_commands_;
+  std::vector<double> new_commands_rt_;
   bool python_had_exception_ = false;
 
   py::module_ python_module_;
