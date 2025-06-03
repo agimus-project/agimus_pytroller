@@ -363,7 +363,6 @@ void AgimusPytroller::py_control_spinner() {
       if (cancellation_token_) {
         break;
       }
-      // TODO find cleaner way to handle rewriting of the data
       auto state_buffer = py_states_->request();
       double *state_ptr = static_cast<double *>(state_buffer.ptr);
       std::copy(last_state_.begin(), last_state_.end(), state_ptr);
@@ -403,8 +402,6 @@ void AgimusPytroller::py_control_spinner() {
       for (const auto &[topic_name, publisher] : topic_publishers_) {
         py::bytes data = on_publish_python_funct_(topic_name);
 
-        // rcl_serialized_message_t serialized_msg =
-        //     rmw_get_zero_initialized_serialized_message();
         char *serialized_buffer;
         Py_ssize_t length;
         if (PYBIND11_BYTES_AS_STRING_AND_SIZE(data.ptr(), &serialized_buffer,
