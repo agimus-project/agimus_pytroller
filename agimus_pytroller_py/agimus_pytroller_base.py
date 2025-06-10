@@ -3,12 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable
 
 import numpy as np
-
-try:
-    from rclpy.serialization import deserialize_message, serialize_message
-except Exception as e:
-    pass
-
+from rclpy.serialization import deserialize_message, serialize_message
 from std_msgs.msg import String
 
 
