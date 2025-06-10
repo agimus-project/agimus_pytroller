@@ -24,7 +24,7 @@ namespace py = pybind11;
 
 namespace agimus_pytroller {
 AgimusPytroller::AgimusPytroller()
-    : controller_interface::ControllerInterface(), guard_() {
+    : controller_interface::ChainableControllerInterface(), guard_() {
   // Workaround to fix undeclared symbols for NumPy
   // https://stackoverflow.com/questions/49784583/numpy-import-fails-on-multiarray-extension-library-when-called-from-embedded-pyt
   dlopen("libpython3.10.so", RTLD_NOW | RTLD_GLOBAL);
@@ -267,6 +267,10 @@ controller_interface::CallbackReturn AgimusPytroller::on_activate(
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
+bool AgimusPytroller::on_set_chained_mode(bool /*chained_mode*/) {
+  return params_.reference_interfaces.size() > 0;
+}
+
 controller_interface::CallbackReturn AgimusPytroller::on_deactivate(
     const rclcpp_lifecycle::State & /*previous_state*/) {
 
@@ -276,9 +280,28 @@ controller_interface::CallbackReturn AgimusPytroller::on_deactivate(
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
+std::vector<hardware_interface::CommandInterface>
+AgimusPytroller::on_export_reference_interfaces() {
+  std::vector<hardware_interface::CommandInterface> reference_interfaces;
+
+  const auto names = params_.reference_interfaces;
+  reference_interfaces_.resize(names.size());
+  for (std::size_t i = 0; i < names.size(); i++) {
+    reference_interfaces.push_back(hardware_interface::CommandInterface(
+        get_node()->get_name(), names[i], &reference_interfaces_[i]));
+  }
+
+  return reference_interfaces;
+}
+
 controller_interface::return_type
-AgimusPytroller::update(const rclcpp::Time &time,
-                        const rclcpp::Duration &period) {
+AgimusPytroller::update_reference_from_subscribers() {
+  return controller_interface::return_type::OK;
+}
+
+controller_interface::return_type
+AgimusPytroller::update_and_write_commands(const rclcpp::Time &time,
+                                           const rclcpp::Duration &period) {
   cycle_++;
   // Read last results of the controller
   if (cycle_ >= params_.python_downsample_factor || first_python_call_) {
@@ -438,4 +461,4 @@ void AgimusPytroller::py_control_spinner() {
 #include "pluginlib/class_list_macros.hpp"
 
 PLUGINLIB_EXPORT_CLASS(agimus_pytroller::AgimusPytroller,
-                       controller_interface::ControllerInterface)
+                       controller_interface::ChainableControllerInterface)

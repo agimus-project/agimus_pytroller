@@ -8,6 +8,11 @@ agimus_pytroller:
     default_value: []
     description: "Order of state interfaces."
     read_only: true
+  reference_interfaces:
+    type: string_array
+    default_value: []
+    description: "Order of state interfaces."
+    read_only: true
   command_interfaces:
     type: string_array
     default_value: []
