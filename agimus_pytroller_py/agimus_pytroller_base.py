@@ -12,7 +12,7 @@ except Exception as e:
 from std_msgs.msg import String
 
 
-class ControllerImpl(ABC):
+class ControllerImplBase(ABC):
     @abstractmethod
     def __init__(self, robot_description: str) -> None:
         self._topic_map: dict[str, tuple[Any, Callable]] = {}
