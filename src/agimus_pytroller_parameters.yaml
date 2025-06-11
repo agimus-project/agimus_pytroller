@@ -1,0 +1,66 @@
+agimus_pytroller:
+  python_module:
+    type: string
+    description: "Python module from which controller will be imported."
+    read_only: true
+  state_interfaces:
+    type: string_array
+    default_value: []
+    description: "Order of state interfaces."
+    read_only: true
+  command_interfaces:
+    type: string_array
+    default_value: []
+    description: "Order of command interfaces."
+    read_only: true
+  python_downsample_factor:
+    type: int
+    default_value: 2
+    description: "How many update cycles to wait before expecting results of the python controller."
+    read_only: true
+  subscribed_topics:
+    type: string_array
+    default_value: []
+    description: "Names of subscribed topics."
+    read_only: true
+  __map_subscribed_topics:
+    topic_name:
+      type: string
+      description: "Names of subscribed topic."
+      read_only: true
+    topic_type:
+      type: string
+      description: "Type of the subscribed topic."
+      read_only: true
+    python_function_name:
+      type: string
+      description: "Name of the python function to call on received data."
+      read_only: true
+  published_topics:
+    type: string_array
+    default_value: []
+    description: "Names of published topics."
+    read_only: true
+  __map_published_topics:
+    topic_name:
+      type: string
+      description: "Names of published topic."
+      read_only: true
+    topic_type:
+      type: string
+      description: "Type of the published topic."
+      read_only: true
+    python_msg_getter_name:
+      type: string
+      description: "Name of the python class object to obtain message."
+      read_only: true
+  error_on_no_data:
+    type: bool
+    default_value: true
+    description: "If set to `true` the controller does not wait for solver lock to be freed and fails if python thread does not manage to produce new commands on time."
+    read_only: true
+  interpolate_trajectory:
+    type: bool
+    default_value: true
+    description: "Linearly interpolate control signals in between downsampling steps."
+    read_only: true
