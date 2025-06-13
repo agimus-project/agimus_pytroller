@@ -80,6 +80,16 @@ protected:
   py::object on_message_python_funct_;
   py::object on_publish_python_funct_;
   py::scoped_interpreter guard_;
+  std::array<double, 2> filer_ = {0.0, 0.0};
+  std::array<double, 3> raw_ = {0.0, 0.0, 0.0};
+
+
+
+  std::array<double, 2> a_= {-1.8403591709709755, 0.8521922521270615};
+  std::array<double, 3> b_= {0.002958270289021522, 0.005916540578043044, 0.002958270289021522};
+
+  // std::array<double, 2> a_= {  -1.911197067426073,  0.9149758348014336};
+  // std::array<double, 3> b_= {  0.0009446918438401507,  0.0018893836876803015,  0.0009446918438401507};
 
   std::queue<std::pair<std::string, std::vector<char>>> topic_queue_;
 

@@ -280,6 +280,16 @@ controller_interface::return_type
 AgimusPytroller::update(const rclcpp::Time &time,
                         const rclcpp::Duration &period) {
   cycle_++;
+  raw_[2] = ordered_state_interfaces_[13].get().get_value();
+  filer_[1] = (b_[0] * raw_[2] +
+                b_[1] * raw_[1] +
+                b_[2] * raw_[0] -
+                a_[0] * filer_[1] -
+                a_[1] * filer_[0]);
+  raw_[0]  = raw_[1];
+  raw_[1]  = raw_[2];
+  filer_[0] = filer_[1];
+
   // Read last results of the controller
   if (cycle_ >= params_.python_downsample_factor || first_python_call_) {
     if (!first_python_call_) {
@@ -324,8 +334,11 @@ AgimusPytroller::update(const rclcpp::Time &time,
     for (std::size_t i = 0; i < ordered_state_interfaces_.size(); i++) {
       last_state_[i] = ordered_state_interfaces_[i].get().get_value();
     }
+    last_state_[13] = filer_[1];
+
     start_solver_ = true;
   }
+
   if (params_.interpolate_trajectory) {
     // Linear interpolation factor between both trajectories.
     const double alpha = static_cast<double>(cycle_) /
