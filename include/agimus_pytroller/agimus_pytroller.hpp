@@ -4,6 +4,7 @@
 #include <memory>
 #include <queue>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include <pybind11/embed.h>
@@ -61,6 +62,13 @@ public:
                             const rclcpp::Duration &period) override;
 
 protected:
+  using LoanedCommandInterface = hardware_interface::LoanedCommandInterface;
+  using LoanedCommandInterfaceRef =
+      std::reference_wrapper<LoanedCommandInterface>;
+
+  using LoanedStateInterface = hardware_interface::LoanedStateInterface;
+  using LoanedStateInterfaceRef = std::reference_wrapper<LoanedStateInterface>;
+
   std::vector<hardware_interface::CommandInterface>
   on_export_reference_interfaces() override;
 
@@ -103,12 +111,17 @@ protected:
 
   std::unique_ptr<py::array_t<double>> py_states_;
 
-  std::vector<
-      std::reference_wrapper<hardware_interface::LoanedCommandInterface>>
-      ordered_command_interfaces_;
+  std::vector<LoanedCommandInterfaceRef> ordered_command_interfaces_;
 
-  std::vector<std::reference_wrapper<hardware_interface::LoanedStateInterface>>
-      ordered_state_interfaces_;
+  std::vector<hardware_interface::CommandInterface>
+      command_reference_interfaces_;
+
+  std::vector<hardware_interface::LoanedCommandInterface>
+      loaned_reference_interfaces_;
+
+
+  std::vector<std::variant<LoanedStateInterfaceRef, LoanedCommandInterfaceRef>>
+      ordered_augmented_state_interfaces_;
 };
 
 } // namespace agimus_pytroller

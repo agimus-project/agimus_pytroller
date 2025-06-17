@@ -6,17 +6,17 @@ agimus_pytroller:
   state_interfaces:
     type: string_array
     default_value: []
-    description: "Order of state interfaces."
-    read_only: true
-  reference_interfaces:
-    type: string_array
-    default_value: []
-    description: "Order of state interfaces."
+    description: "Order of state interfaces mixed with reference interfaces."
     read_only: true
   command_interfaces:
     type: string_array
     default_value: []
     description: "Order of command interfaces."
+    read_only: true
+  reference_interfaces:
+    type: string_array
+    default_value: []
+    description: "Reference interfaces to create."
     read_only: true
   python_downsample_factor:
     type: int
