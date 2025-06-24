@@ -121,7 +121,7 @@ protected:
 
 
   std::vector<std::variant<LoanedStateInterfaceRef, LoanedCommandInterfaceRef>>
-      ordered_augmented_state_interfaces_;
+      ordered_input_interfaces_;
 };
 
 } // namespace agimus_pytroller

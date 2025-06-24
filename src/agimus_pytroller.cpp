@@ -229,9 +229,9 @@ controller_interface::CallbackReturn AgimusPytroller::on_activate(
     const rclcpp_lifecycle::State & /*previous_state*/) {
 
   py_states_ =
-      std::make_unique<py::array_t<double>>(params_.state_interfaces.size());
+      std::make_unique<py::array_t<double>>(params_.input_interfaces.size());
 
-  last_state_.resize(params_.state_interfaces.size(), 0.0);
+  last_state_.resize(params_.input_interfaces.size(), 0.0);
   new_commands_.resize(params_.command_interfaces.size(), 0.0);
   last_commands_.resize(params_.command_interfaces.size(), 0.0);
   new_commands_rt_.resize(params_.command_interfaces.size(), 0.0);
@@ -253,27 +253,27 @@ controller_interface::CallbackReturn AgimusPytroller::on_activate(
     loaned_reference_interfaces_.push_back(LoanedCommandInterface(interface));
   }
 
-  ordered_augmented_state_interfaces_.reserve(params_.state_interfaces.size());
-  for (const std::string &name : params_.state_interfaces) {
+  ordered_input_interfaces_.reserve(params_.input_interfaces.size());
+  for (const std::string &name : params_.input_interfaces) {
     for (auto &interface : state_interfaces_) {
       if (name == interface.get_name()) {
-        ordered_augmented_state_interfaces_.push_back(std::ref(interface));
+        ordered_input_interfaces_.push_back(std::ref(interface));
         break;
       }
     }
     for (auto &interface : loaned_reference_interfaces_) {
       if (name == interface.get_name()) {
-        ordered_augmented_state_interfaces_.push_back(std::ref(interface));
+        ordered_input_interfaces_.push_back(std::ref(interface));
         break;
       }
     }
   }
-  if (ordered_augmented_state_interfaces_.size() !=
-      params_.state_interfaces.size()) {
+  if (ordered_input_interfaces_.size() !=
+      params_.input_interfaces.size()) {
     RCLCPP_ERROR(this->get_node()->get_logger(),
                  "Expected %zu state and reference interfaces, found %zu",
-                 params_.state_interfaces.size(),
-                 ordered_augmented_state_interfaces_.size());
+                 params_.input_interfaces.size(),
+                 ordered_input_interfaces_.size());
     return controller_interface::CallbackReturn::ERROR;
   }
 
@@ -368,7 +368,7 @@ AgimusPytroller::update_and_write_commands(const rclcpp::Time &time,
     std::copy(new_commands_.begin(), new_commands_.end(),
               new_commands_rt_.begin());
 
-    auto &state = ordered_augmented_state_interfaces_;
+    auto &state = ordered_input_interfaces_;
     for (std::size_t i = 0; i < state.size(); i++) {
       if (std::holds_alternative<LoanedStateInterfaceRef>(state[i])) {
         auto s = std::get<LoanedStateInterfaceRef>(state[i]);
