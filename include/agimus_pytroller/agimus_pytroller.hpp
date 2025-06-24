@@ -4,13 +4,14 @@
 #include <memory>
 #include <queue>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include <pybind11/embed.h>
 #include <pybind11/numpy.h>
 
 #include "agimus_pytroller/visibility.hpp"
-#include "controller_interface/controller_interface.hpp"
+#include "controller_interface/chainable_controller_interface.hpp"
 #include "rclcpp/serialized_message.hpp"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
@@ -20,7 +21,8 @@
 namespace py = pybind11;
 
 namespace agimus_pytroller {
-class AgimusPytroller : public controller_interface::ControllerInterface {
+class AgimusPytroller
+    : public controller_interface::ChainableControllerInterface {
 public:
   AGIMUS_PYTROLLER_LOCAL
   AgimusPytroller();
@@ -52,10 +54,27 @@ public:
   on_deactivate(const rclcpp_lifecycle::State &previous_state) override;
 
   AGIMUS_PYTROLLER_LOCAL
+  bool on_set_chained_mode(bool chained_mode) override;
+
+  AGIMUS_PYTROLLER_LOCAL
   controller_interface::return_type
-  update(const rclcpp::Time &time, const rclcpp::Duration &period) override;
+  update_and_write_commands(const rclcpp::Time &time,
+                            const rclcpp::Duration &period) override;
 
 protected:
+  using LoanedCommandInterface = hardware_interface::LoanedCommandInterface;
+  using LoanedCommandInterfaceRef =
+      std::reference_wrapper<LoanedCommandInterface>;
+
+  using LoanedStateInterface = hardware_interface::LoanedStateInterface;
+  using LoanedStateInterfaceRef = std::reference_wrapper<LoanedStateInterface>;
+
+  std::vector<hardware_interface::CommandInterface>
+  on_export_reference_interfaces() override;
+
+  controller_interface::return_type
+  update_reference_from_subscribers() override;
+
   void py_control_spinner();
   std::unique_ptr<std::thread> control_spinner_thread_;
   std::mutex solver_stop_mtx_;
@@ -84,19 +103,25 @@ protected:
   std::queue<std::pair<std::string, std::vector<char>>> topic_queue_;
 
   std::vector<std::shared_ptr<rclcpp::GenericSubscription>> topic_subscribers_;
-  std::vector<std::pair<std::string, std::shared_ptr<rclcpp::GenericPublisher>>> topic_publishers_;
+  std::vector<std::pair<std::string, std::shared_ptr<rclcpp::GenericPublisher>>>
+      topic_publishers_;
 
   std::shared_ptr<ParamListener> param_listener_;
   Params params_;
 
   std::unique_ptr<py::array_t<double>> py_states_;
 
-  std::vector<
-      std::reference_wrapper<hardware_interface::LoanedCommandInterface>>
-      ordered_command_interfaces_;
+  std::vector<LoanedCommandInterfaceRef> ordered_command_interfaces_;
 
-  std::vector<std::reference_wrapper<hardware_interface::LoanedStateInterface>>
-      ordered_state_interfaces_;
+  std::vector<hardware_interface::CommandInterface>
+      command_reference_interfaces_;
+
+  std::vector<hardware_interface::LoanedCommandInterface>
+      loaned_reference_interfaces_;
+
+
+  std::vector<std::variant<LoanedStateInterfaceRef, LoanedCommandInterfaceRef>>
+      ordered_input_interfaces_;
 };
 
 } // namespace agimus_pytroller

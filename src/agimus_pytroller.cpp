@@ -3,6 +3,7 @@
 #include <memory>
 #include <ratio>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include <pybind11/embed.h>
@@ -24,7 +25,7 @@ namespace py = pybind11;
 
 namespace agimus_pytroller {
 AgimusPytroller::AgimusPytroller()
-    : controller_interface::ControllerInterface(), guard_() {
+    : controller_interface::ChainableControllerInterface(), guard_() {
   // Workaround to fix undeclared symbols for NumPy
   // https://stackoverflow.com/questions/49784583/numpy-import-fails-on-multiarray-extension-library-when-called-from-embedded-pyt
   dlopen("libpython3.10.so", RTLD_NOW | RTLD_GLOBAL);
@@ -228,9 +229,9 @@ controller_interface::CallbackReturn AgimusPytroller::on_activate(
     const rclcpp_lifecycle::State & /*previous_state*/) {
 
   py_states_ =
-      std::make_unique<py::array_t<double>>(params_.state_interfaces.size());
+      std::make_unique<py::array_t<double>>(params_.input_interfaces.size());
 
-  last_state_.resize(params_.state_interfaces.size(), 0.0);
+  last_state_.resize(params_.input_interfaces.size(), 0.0);
   new_commands_.resize(params_.command_interfaces.size(), 0.0);
   last_commands_.resize(params_.command_interfaces.size(), 0.0);
   new_commands_rt_.resize(params_.command_interfaces.size(), 0.0);
@@ -247,13 +248,32 @@ controller_interface::CallbackReturn AgimusPytroller::on_activate(
     return controller_interface::CallbackReturn::ERROR;
   }
 
-  if (!controller_interface::get_ordered_interfaces(
-          state_interfaces_, params_.state_interfaces, std::string(""),
-          ordered_state_interfaces_)) {
+  // Populate loaned interfaces
+  for (auto &interface : command_reference_interfaces_) {
+    loaned_reference_interfaces_.push_back(LoanedCommandInterface(interface));
+  }
+
+  ordered_input_interfaces_.reserve(params_.input_interfaces.size());
+  for (const std::string &name : params_.input_interfaces) {
+    for (auto &interface : state_interfaces_) {
+      if (name == interface.get_name()) {
+        ordered_input_interfaces_.push_back(std::ref(interface));
+        break;
+      }
+    }
+    for (auto &interface : loaned_reference_interfaces_) {
+      if (name == interface.get_name()) {
+        ordered_input_interfaces_.push_back(std::ref(interface));
+        break;
+      }
+    }
+  }
+  if (ordered_input_interfaces_.size() !=
+      params_.input_interfaces.size()) {
     RCLCPP_ERROR(this->get_node()->get_logger(),
-                 "Expected %zu state interfaces, found %zu",
-                 params_.state_interfaces.size(),
-                 ordered_state_interfaces_.size());
+                 "Expected %zu state and reference interfaces, found %zu",
+                 params_.input_interfaces.size(),
+                 ordered_input_interfaces_.size());
     return controller_interface::CallbackReturn::ERROR;
   }
 
@@ -267,6 +287,10 @@ controller_interface::CallbackReturn AgimusPytroller::on_activate(
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
+bool AgimusPytroller::on_set_chained_mode(bool /*chained_mode*/) {
+  return params_.reference_interfaces.size() > 0;
+}
+
 controller_interface::CallbackReturn AgimusPytroller::on_deactivate(
     const rclcpp_lifecycle::State & /*previous_state*/) {
 
@@ -276,9 +300,32 @@ controller_interface::CallbackReturn AgimusPytroller::on_deactivate(
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
+std::vector<hardware_interface::CommandInterface>
+AgimusPytroller::on_export_reference_interfaces() {
+  std::vector<hardware_interface::CommandInterface> reference_interfaces;
+
+  const auto names = params_.reference_interfaces;
+  reference_interfaces_.resize(names.size());
+  for (std::size_t i = 0; i < names.size(); i++) {
+    reference_interfaces.push_back(hardware_interface::CommandInterface(
+        get_node()->get_name(), names[i], &reference_interfaces_[i]));
+    // walkaround as CommandInterface doesn't have the copy constructor
+    command_reference_interfaces_.push_back(
+        hardware_interface::CommandInterface(get_node()->get_name(), names[i],
+                                             &reference_interfaces_[i]));
+  }
+
+  return reference_interfaces;
+}
+
 controller_interface::return_type
-AgimusPytroller::update(const rclcpp::Time &time,
-                        const rclcpp::Duration &period) {
+AgimusPytroller::update_reference_from_subscribers() {
+  return controller_interface::return_type::OK;
+}
+
+controller_interface::return_type
+AgimusPytroller::update_and_write_commands(const rclcpp::Time &time,
+                                           const rclcpp::Duration &period) {
   cycle_++;
   // Read last results of the controller
   if (cycle_ >= params_.python_downsample_factor || first_python_call_) {
@@ -321,8 +368,15 @@ AgimusPytroller::update(const rclcpp::Time &time,
     std::copy(new_commands_.begin(), new_commands_.end(),
               new_commands_rt_.begin());
 
-    for (std::size_t i = 0; i < ordered_state_interfaces_.size(); i++) {
-      last_state_[i] = ordered_state_interfaces_[i].get().get_value();
+    auto &state = ordered_input_interfaces_;
+    for (std::size_t i = 0; i < state.size(); i++) {
+      if (std::holds_alternative<LoanedStateInterfaceRef>(state[i])) {
+        auto s = std::get<LoanedStateInterfaceRef>(state[i]);
+        last_state_[i] = s.get().get_value();
+      } else if (std::holds_alternative<LoanedCommandInterfaceRef>(state[i])) {
+        auto s = std::get<LoanedCommandInterfaceRef>(state[i]);
+        last_state_[i] = s.get().get_value();
+      }
     }
     start_solver_ = true;
   }
@@ -438,4 +492,4 @@ void AgimusPytroller::py_control_spinner() {
 #include "pluginlib/class_list_macros.hpp"
 
 PLUGINLIB_EXPORT_CLASS(agimus_pytroller::AgimusPytroller,
-                       controller_interface::ControllerInterface)
+                       controller_interface::ChainableControllerInterface)

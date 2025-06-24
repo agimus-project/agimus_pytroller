@@ -3,15 +3,20 @@ agimus_pytroller:
     type: string
     description: "Python module from which controller will be imported."
     read_only: true
-  state_interfaces:
+  input_interfaces:
     type: string_array
     default_value: []
-    description: "Order of state interfaces."
+    description: "Ordered interfaces containing inputs to the controller. This list combines both available state interfaces and registered reference interfaces."
     read_only: true
   command_interfaces:
     type: string_array
     default_value: []
     description: "Order of command interfaces."
+    read_only: true
+  reference_interfaces:
+    type: string_array
+    default_value: []
+    description: "Reference interfaces to create."
     read_only: true
   python_downsample_factor:
     type: int
