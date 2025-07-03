@@ -95,6 +95,14 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
   }
 
   try {
+    on_post_update_python_funct_ = controller_object_.attr("on_post_update");
+  } catch (const std::exception &e) {
+    RCLCPP_ERROR(get_node()->get_logger(),
+                 "Filed to find 'ControllerImpl.on_post_update': %s\n", e.what());
+    return controller_interface::CallbackReturn::ERROR;
+  }
+
+  try {
     on_message_python_funct_ = controller_object_.attr("on_message");
   } catch (const std::exception &e) {
     RCLCPP_ERROR(get_node()->get_logger(),
@@ -453,6 +461,9 @@ void AgimusPytroller::py_control_spinner() {
         }
       }
       solver_stop_cv_.notify_one();
+
+      // Perform task that less require real-time strictness
+      on_post_update_python_funct_();
 
       for (const auto &[topic_name, publisher] : topic_publishers_) {
         py::bytes data = on_publish_python_funct_(topic_name);

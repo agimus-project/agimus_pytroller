@@ -84,3 +84,10 @@ class ControllerImplBase(ABC):
             np.array: Control signal returned from the controller.
         """
         pass
+
+    @abstractmethod
+    def on_post_update(self) -> None:
+        """Callback called after ``on_update`` finished. Used to perform
+        non time-critical actions.
+        """
+        pass
