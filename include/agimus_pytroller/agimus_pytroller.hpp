@@ -96,6 +96,7 @@ protected:
   py::module_ python_module_;
   py::object controller_object_;
   py::object on_update_python_funct_;
+  py::object on_post_update_python_funct_;
   py::object on_message_python_funct_;
   py::object on_publish_python_funct_;
   py::scoped_interpreter guard_;
