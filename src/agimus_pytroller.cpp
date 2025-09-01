@@ -98,7 +98,8 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
     on_post_update_python_funct_ = controller_object_.attr("on_post_update");
   } catch (const std::exception &e) {
     RCLCPP_ERROR(get_node()->get_logger(),
-                 "Filed to find 'ControllerImpl.on_post_update': %s\n", e.what());
+                 "Filed to find 'ControllerImpl.on_post_update': %s\n",
+                 e.what());
     return controller_interface::CallbackReturn::ERROR;
   }
 
@@ -276,8 +277,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_activate(
       }
     }
   }
-  if (ordered_input_interfaces_.size() !=
-      params_.input_interfaces.size()) {
+  if (ordered_input_interfaces_.size() != params_.input_interfaces.size()) {
     RCLCPP_ERROR(this->get_node()->get_logger(),
                  "Expected %zu state and reference interfaces, found %zu",
                  params_.input_interfaces.size(),
@@ -334,73 +334,42 @@ AgimusPytroller::update_reference_from_subscribers() {
 controller_interface::return_type
 AgimusPytroller::update_and_write_commands(const rclcpp::Time &time,
                                            const rclcpp::Duration &period) {
-  cycle_++;
-  // Read last results of the controller
-  if (cycle_ >= params_.python_downsample_factor || first_python_call_) {
-    if (!first_python_call_) {
-      bool timeout_reached = false;
-      bool local_python_had_exception;
 
-      {
-        std::unique_lock lk(solver_stop_mtx_);
-        // Do not block the thread to wait for spinner to finish
-        if (params_.error_on_no_data) {
-          if (!solver_finished_) {
-            RCLCPP_ERROR(
-                get_node()->get_logger(),
-                "Python controller did not manage to find solution on time!");
-            return controller_interface::return_type::ERROR;
-          }
-        } else {
-          solver_stop_cv_.wait(lk, [this] { return solver_finished_; });
-        }
-        // Reset the flag
-        solver_finished_ = false;
-        local_python_had_exception = python_had_exception_;
-      }
-
-      cycle_ = 0;
-      if (timeout_reached) {
-        RCLCPP_ERROR(get_node()->get_logger(),
-                     "Timeout reached before controller returned solution!");
-        return controller_interface::return_type::ERROR;
-      }
-      if (local_python_had_exception) {
-        return controller_interface::return_type::ERROR;
-      }
+  // Dispatch python
+  auto &state = ordered_input_interfaces_;
+  for (std::size_t i = 0; i < state.size(); i++) {
+    if (std::holds_alternative<LoanedStateInterfaceRef>(state[i])) {
+      auto s = std::get<LoanedStateInterfaceRef>(state[i]);
+      last_state_[i] = s.get().get_value();
+    } else if (std::holds_alternative<LoanedCommandInterfaceRef>(state[i])) {
+      auto s = std::get<LoanedCommandInterfaceRef>(state[i]);
+      last_state_[i] = s.get().get_value();
     }
-    first_python_call_ = false;
+  }
+  start_solver_ = true;
+
+  // Await results
+  bool local_python_had_exception;
+
+  {
+    std::unique_lock lk(solver_stop_mtx_);
+    solver_stop_cv_.wait(lk, [this] { return solver_finished_; });
+    // Reset the flag
+    solver_finished_ = false;
+    local_python_had_exception = python_had_exception_;
 
     std::copy(new_commands_rt_.begin(), new_commands_rt_.end(),
               last_commands_.begin());
     std::copy(new_commands_.begin(), new_commands_.end(),
               new_commands_rt_.begin());
-
-    auto &state = ordered_input_interfaces_;
-    for (std::size_t i = 0; i < state.size(); i++) {
-      if (std::holds_alternative<LoanedStateInterfaceRef>(state[i])) {
-        auto s = std::get<LoanedStateInterfaceRef>(state[i]);
-        last_state_[i] = s.get().get_value();
-      } else if (std::holds_alternative<LoanedCommandInterfaceRef>(state[i])) {
-        auto s = std::get<LoanedCommandInterfaceRef>(state[i]);
-        last_state_[i] = s.get().get_value();
-      }
-    }
-    start_solver_ = true;
   }
-  if (params_.interpolate_trajectory) {
-    // Linear interpolation factor between both trajectories.
-    const double alpha = static_cast<double>(cycle_) /
-                         static_cast<double>(params_.python_downsample_factor);
-    for (std::size_t i = 0; i < ordered_command_interfaces_.size(); i++) {
-      const double interp =
-          (1.0 - alpha) * last_commands_[i] + alpha * new_commands_rt_[i];
-      ordered_command_interfaces_[i].get().set_value(interp);
-    }
-  } else {
-    for (std::size_t i = 0; i < ordered_command_interfaces_.size(); i++) {
-      ordered_command_interfaces_[i].get().set_value(new_commands_rt_[i]);
-    }
+
+  if (local_python_had_exception) {
+    return controller_interface::return_type::ERROR;
+  }
+
+  for (std::size_t i = 0; i < ordered_command_interfaces_.size(); i++) {
+    ordered_command_interfaces_[i].get().set_value(new_commands_rt_[i]);
   }
 
   return controller_interface::return_type::OK;

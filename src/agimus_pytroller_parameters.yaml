@@ -69,3 +69,9 @@ agimus_pytroller:
     default_value: true
     description: "Linearly interpolate control signals in between downsampling steps."
     read_only: true
+  # For compatibility with LFC
+  moving_joint_names:
+    type: string_array
+    description: "list of active joint names used by the controller."
+    validation:
+      not_empty<>: []
