@@ -327,7 +327,8 @@ AgimusPytroller::on_export_reference_interfaces() {
 }
 
 controller_interface::return_type
-AgimusPytroller::update_reference_from_subscribers() {
+AgimusPytroller::update_reference_from_subscribers(
+    const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/) {
   return controller_interface::return_type::OK;
 }
 

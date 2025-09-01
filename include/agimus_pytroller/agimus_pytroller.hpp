@@ -73,7 +73,8 @@ protected:
   on_export_reference_interfaces() override;
 
   controller_interface::return_type
-  update_reference_from_subscribers() override;
+  update_reference_from_subscribers(
+    const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/) override;
 
   void py_control_spinner();
   std::unique_ptr<std::thread> control_spinner_thread_;
