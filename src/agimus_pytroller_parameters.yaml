@@ -41,10 +41,10 @@ agimus_pytroller:
       type: bool
       description: "Wether the topic QoS is transient local or not."
       read_only: true
-    retires:
+    retries:
       type: int
       default_value: 10
-      description: "How many times to retry waiting for the topic."
+      description: "How many times to retry waiting for the topic. The node retries fetching data every 1 second."
       read_only: true
   subscribed_topics:
     type: string_array

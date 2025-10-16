@@ -246,13 +246,13 @@ std::shared_ptr<rclcpp::SerializedMessage> AgimusPytroller::fetch_message_once(
         topic_data = msg;
       });
 
-  for (int i = 0; i < topic_params.retires; i++) {
+  for (int i = 0; i < topic_params.retries; i++) {
     rclcpp::spin_some(temp_node);
     if (topic_data != nullptr) {
       RCLCPP_INFO_STREAM(get_node()->get_logger(),
                          "Received data from a topic '" << topic_name << "'");
       break;
-    } else if (i == topic_params.retires) {
+    } else if (i == topic_params.retries) {
       std::string error_msg =
           "Filed to receive data from topic '" + topic_name + "'!";
       throw std::runtime_error(error_msg);
