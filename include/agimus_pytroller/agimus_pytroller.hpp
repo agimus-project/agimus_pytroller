@@ -75,6 +75,12 @@ protected:
   controller_interface::return_type
   update_reference_from_subscribers() override;
 
+  std::shared_ptr<rclcpp::SerializedMessage>
+  fetch_message_once(const std::shared_ptr<rclcpp::Node> &temp_node,
+                     const std::string &topic_name);
+  inline std::vector<char>
+  msg_to_buffer(const std::shared_ptr<rclcpp::SerializedMessage> &msg);
+
   void py_control_spinner();
   std::unique_ptr<std::thread> control_spinner_thread_;
   std::mutex solver_stop_mtx_;
@@ -119,7 +125,6 @@ protected:
 
   std::vector<hardware_interface::LoanedCommandInterface>
       loaned_reference_interfaces_;
-
 
   std::vector<std::variant<LoanedStateInterfaceRef, LoanedCommandInterfaceRef>>
       ordered_input_interfaces_;
