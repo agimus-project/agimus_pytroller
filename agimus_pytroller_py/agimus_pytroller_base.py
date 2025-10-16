@@ -8,9 +8,45 @@ from std_msgs.msg import String
 
 
 class ControllerImplBase(ABC):
-    @abstractmethod
-    def __init__(self, robot_description: str) -> None:
+    def __init__(
+        self,
+        topic_names: list[str],
+        topic_types: list[str],
+        message_payloads: list[bytes],
+    ) -> None:
         self._topic_map: dict[str, tuple[Any, Callable]] = {}
+        msg_types = [self.get_topic_type(t) for t in topic_types]
+        deserialized_msgs = [
+            deserialize_message(data, t) for data, t in zip(message_payloads, msg_types)
+        ]
+        self.setup(**{name: msg for name, msg in zip(topic_names, deserialized_msgs)})
+
+    @abstractmethod
+    def setup(self, **kwargs) -> None:
+        """Initialization callback to populate by the user.
+
+        Args:
+            kwargs: messages subscribed using ``initialization_data_topics`` ROS parameter
+            are passed here as arguments of the function.
+
+        """
+        pass
+
+    @staticmethod
+    def get_topic_type(topic_type: str) -> Any:
+        """Parses message type name, imports it's definition and returns corresponding
+        object that can be used to deserialize messages.
+
+
+        Args:
+            topic_type (str): Name of the message type.
+
+        Returns:
+            Any: Python object used to store deserialized mesaage.
+        """
+        mt = topic_type.split("/")
+        msg_attr = getattr(importlib.import_module(".".join(mt[:2])), mt[-1])
+        return type(msg_attr())
 
     def build_message_map(
         self, topic_name: str, topic_type: str, callback: str
@@ -24,10 +60,9 @@ class ControllerImplBase(ABC):
             callback (str): Name of a python function used as a message callback.
         """
         if topic_name not in self._topic_map:
-            mt = topic_type.split("/")
-            messagetype = getattr(importlib.import_module(".".join(mt[:2])), mt[-1])
+            message_type = self.get_topic_type(topic_type)
             self._topic_map[topic_name] = (
-                type(messagetype()),
+                message_type,
                 getattr(self, callback),
             )
 

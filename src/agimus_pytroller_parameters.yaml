@@ -23,6 +23,29 @@ agimus_pytroller:
     default_value: 2
     description: "How many update cycles to wait before expecting results of the python controller."
     read_only: true
+  initialization_data_topics:
+    type: string_array
+    default_value: []
+    description: "Names of subscribed topics required for controller initialization."
+    read_only: true
+  __map_initialization_data_topics:
+    topic_name:
+      type: string
+      description: "Names of subscribed topic."
+      read_only: true
+    topic_type:
+      type: string
+      description: "Type of the subscribed topic."
+      read_only: true
+    transient_local:
+      type: bool
+      description: "Wether the topic QoS is transient local or not."
+      read_only: true
+    retries:
+      type: int
+      default_value: 10
+      description: "How many times to retry waiting for the topic. The node retries fetching data every 1 second."
+      read_only: true
   subscribed_topics:
     type: string_array
     default_value: []

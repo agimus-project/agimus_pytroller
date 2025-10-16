@@ -9,6 +9,7 @@
 #include <pybind11/embed.h>
 #include <pybind11/numpy.h>
 #include <pybind11/pytypes.h>
+#include <pybind11/stl.h>
 
 #include "controller_interface/helpers.hpp"
 #include "hardware_interface/loaned_command_interface.hpp"
@@ -55,30 +56,31 @@ controller_interface::CallbackReturn AgimusPytroller::on_init() {
 controller_interface::CallbackReturn AgimusPytroller::on_configure(
     const rclcpp_lifecycle::State & /*previous_state*/) {
 
-  std_msgs::msg::String robot_description_msg;
-  auto robot_description_sub =
-      get_node()->create_subscription<std_msgs::msg::String>(
-          "/robot_description", rclcpp::QoS(1).transient_local(),
-          [](const std::shared_ptr<const std_msgs::msg::String>) {});
+  // Create temporary ROS node to be able to spin it
+  auto temp_node = std::make_shared<rclcpp::Node>(
+      get_node()->get_name() + std::string("_init_subscriber"));
+  std::vector<std::string> topic_types;
+  py::list message_payloads;
+  for (const std::string &subscriber_name :
+       params_.initialization_data_topics) {
+    try {
+      const auto &topic_params =
+          params_.initialization_data_topics_map.at(subscriber_name);
+      topic_types.push_back(topic_params.topic_type);
 
-  const std::size_t retires = 10;
-  for (std::size_t i = 0; i < retires; i++) {
-    if (rclcpp::wait_for_message(robot_description_msg, robot_description_sub,
-                                 get_node()->get_node_options().context(),
-                                 std::chrono::seconds(1))) {
-      RCLCPP_INFO(get_node()->get_logger(), "Robot description received.");
-      break;
-    } else if (i == retires) {
-      fprintf(stderr, "Filed to receive data on '/robot_description' topic.");
+      const auto msg = fetch_message_once(temp_node, subscriber_name);
+      const auto payload = msg_to_buffer(msg);
+      py::bytes py_payload(payload.data(), payload.size());
+      message_payloads.append(py_payload);
+    } catch (const std::exception &e) {
+      RCLCPP_ERROR(get_node()->get_logger(), e.what());
       return controller_interface::CallbackReturn::ERROR;
     }
-    RCLCPP_INFO(get_node()->get_logger(),
-                "Robot description still not received. Retrying...");
   }
 
   try {
-    controller_object_ =
-        python_module_.attr("ControllerImpl")(robot_description_msg.data);
+    controller_object_ = python_module_.attr("ControllerImpl")(
+        py::cast(params_.initialization_data_topics), py::cast(topic_types), message_payloads);
   } catch (const std::exception &e) {
     RCLCPP_ERROR(get_node()->get_logger(),
                  "Filed to initialize python object 'ControllerImpl': %s\n ",
@@ -98,7 +100,8 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
     on_post_update_python_funct_ = controller_object_.attr("on_post_update");
   } catch (const std::exception &e) {
     RCLCPP_ERROR(get_node()->get_logger(),
-                 "Filed to find 'ControllerImpl.on_post_update': %s\n", e.what());
+                 "Filed to find 'ControllerImpl.on_post_update': %s\n",
+                 e.what());
     return controller_interface::CallbackReturn::ERROR;
   }
 
@@ -120,10 +123,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
         topic_name, topic_type, rclcpp::SystemDefaultsQoS(),
         [this, topic_name](std::shared_ptr<rclcpp::SerializedMessage> msg) {
           try {
-            const auto serialized_msg = msg->get_rcl_serialized_message();
-            std::vector<char> payload(serialized_msg.buffer,
-                                      serialized_msg.buffer +
-                                          serialized_msg.buffer_length);
+            const std::vector<char> payload = msg_to_buffer(msg);
             std::pair<std::string, std::vector<char>> message_data = {
                 topic_name, payload};
             topic_queue_.push(message_data);
@@ -217,6 +217,55 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
+inline std::vector<char> AgimusPytroller::msg_to_buffer(
+    const std::shared_ptr<rclcpp::SerializedMessage> &msg) {
+  const auto serialized_msg = msg->get_rcl_serialized_message();
+  std::vector<char> payload(serialized_msg.buffer,
+                            serialized_msg.buffer +
+                                serialized_msg.buffer_length);
+  return payload;
+}
+
+std::shared_ptr<rclcpp::SerializedMessage> AgimusPytroller::fetch_message_once(
+    const std::shared_ptr<rclcpp::Node> &temp_node,
+    const std::string &subscriber_name) {
+
+  const auto &topic_params =
+      params_.initialization_data_topics_map.at(subscriber_name);
+
+  const auto &topic_type = topic_params.topic_type;
+  const auto topic_name = topic_params.topic_name;
+
+  std::shared_ptr<rclcpp::SerializedMessage> topic_data;
+  const auto qos = topic_params.transient_local
+                       ? rclcpp::QoS(1).transient_local()
+                       : rclcpp::SystemDefaultsQoS();
+  auto topic_sub = temp_node->create_generic_subscription(
+      topic_name, topic_type, qos,
+      [&](const std::shared_ptr<rclcpp::SerializedMessage> msg) {
+        topic_data = msg;
+      });
+
+  for (int i = 0; i < topic_params.retries; i++) {
+    rclcpp::spin_some(temp_node);
+    if (topic_data != nullptr) {
+      RCLCPP_INFO_STREAM(get_node()->get_logger(),
+                         "Received data from a topic '" << topic_name << "'");
+      break;
+    } else if (i == topic_params.retries) {
+      std::string error_msg =
+          "Filed to receive data from topic '" + topic_name + "'!";
+      throw std::runtime_error(error_msg);
+    }
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    RCLCPP_INFO_STREAM(get_node()->get_logger(),
+                       "Data from a topic '"
+                           << topic_name
+                           << "' is still not received. Retrying...");
+  }
+  return topic_data;
+}
+
 controller_interface::InterfaceConfiguration
 AgimusPytroller::command_interface_configuration() const {
   controller_interface::InterfaceConfiguration command_interfaces_config;
@@ -276,8 +325,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_activate(
       }
     }
   }
-  if (ordered_input_interfaces_.size() !=
-      params_.input_interfaces.size()) {
+  if (ordered_input_interfaces_.size() != params_.input_interfaces.size()) {
     RCLCPP_ERROR(this->get_node()->get_logger(),
                  "Expected %zu state and reference interfaces, found %zu",
                  params_.input_interfaces.size(),
@@ -317,7 +365,7 @@ AgimusPytroller::on_export_reference_interfaces() {
   for (std::size_t i = 0; i < names.size(); i++) {
     reference_interfaces.push_back(hardware_interface::CommandInterface(
         get_node()->get_name(), names[i], &reference_interfaces_[i]));
-    // walkaround as CommandInterface doesn't have the copy constructor
+    // Walkaround as CommandInterface doesn't have the copy constructor
     command_reference_interfaces_.push_back(
         hardware_interface::CommandInterface(get_node()->get_name(), names[i],
                                              &reference_interfaces_[i]));
