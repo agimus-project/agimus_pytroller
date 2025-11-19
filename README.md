@@ -8,7 +8,9 @@
 > [!CAUTION]
 > This controller breaks realtime guarantees of ros2_control. Use it at your own risk!
 
-ros2_control controller doubling as a Python abstraction layer for fast prototyping complex control schemes. This controller picks subset of repeating functionalities in designing of robot control strategies and simplifies the development proves.
+Agimus Pytroller is a ros2_control controller that runs a Python interpreter within a C++ process. It enables rapid prototyping of controllers in Python and deploying them on hardware without need of recompilation of the code with each tweak to the codebase.
+
+By design, it provides only a subset of ros2_control features, focusing on the components most commonly used in manipulator control. This allows developers to concentrate on defining and testing their control strategies rather than managing the full complexity of ros2_control framework.
 
 # Example use
 
@@ -149,11 +151,15 @@ class ControllerImpl(ControllerImplBase):
 ```
 
 > [!IMPORTANT]
-> The fastest this controller can compute control is with a delay of one control cycle! This is an inherit limitation of this architecture.
+> Due to internal architecture of the codebase, the computed control is applied always with a delay. The fastest this controller can send control is with a delay of one control cycle.
 
 # Internal architecture
 
-Internally agimus_pytroller spawns a separate thread for Python interpreter to avoid stalling main control loop in cases of Python errors or non-deterministic execution times. The thread starts spinning processing all the incoming messages, passed to it via a queues, invoking appropriate python callbacks with `on_message` python function. The loop is interrupted when `update_and_write_commands` is called in the main thread, passing current state of the robot and invoking `on_update` python function. Once control is computed, results are passed to the main controller thread and `on_publish` is queried to publish messages outside, with `on_post_update` being called afterwards. After that the loop starts processing all remaining messages. See image below for more information on the architecture.
+Internally, agimus_pytroller creates a dedicated thread for the Python interpreter to prevent Python errors or non-deterministic execution times from blocking the main control loop. This thread continuously processes incoming messages, which are delivered through queues, and invokes the appropriate Python callbacks via the on_message function.
+
+The message loop in the Python thread is interrupted whenever `update_and_write_commands` is called from the main thread. At that point, the current robot state is passed to the Python interpreter, and the `on_update` function is executed. After the control output is computed, the results are returned to the main controller thread, and `on_publish` is called to publish messages externally, followed by `on_post_update`. Once these operations complete, the Python thread goes back processing any remaining in the queue and new incoming messages.
+
+See the diagram below for a detailed overview of the architecture.
 
 > [!NOTE]
 > - Rectangles with thick orange line are separate threads
