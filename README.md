@@ -5,7 +5,7 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 
-> [!WARNING]
+> [!CAUTION]
 > This controller breaks realtime guarantees of ros2_control. Use it at your own risk!
 
 ros2_control controller doubling as a Python abstraction layer for fast prototyping complex control schemes. This controller picks subset of repeating functionalities in designing of robot control strategies and simplifies the development proves.
@@ -148,18 +148,18 @@ class ControllerImpl(ControllerImplBase):
 
 ```
 
-> [!NOTE]
+> [!IMPORTANT]
 > The fastest this controller can compute control is with a delay of one control cycle! This is an inherit limitation of this architecture.
 
 # Internal architecture
 
 Internally agimus_pytroller spawns a separate thread for Python interpreter to avoid stalling main control loop in cases of Python errors or non-deterministic execution times. The thread starts spinning processing all the incoming messages, passed to it via a queues, invoking appropriate python callbacks with `on_message` python function. The loop is interrupted when `update_and_write_commands` is called in the main thread, passing current state of the robot and invoking `on_update` python function. Once control is computed, results are passed to the main controller thread and `on_publish` is queried to publish messages outside, with `on_post_update` being called afterwards. After that the loop starts processing all remaining messages. See image below for more information on the architecture.
 
-> [!INFO]
+> [!NOTE]
 > - Rectangles with thick orange line are separate threads
 > - Light gray boxes depict functions being called on the python side.
 
-![agimus pytroller architecture](./assets/pytroller_architecture.drawio.svg)
+![agimus pytroller architecture](./assets/pytroller_architecture.drawio.png)
 
 
 ## Acknowledgments
