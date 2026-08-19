@@ -1,6 +1,6 @@
 import importlib
-from abc import ABC, abstractmethod
-from typing import Any, Callable
+from abc import ABC, Callable, abstractmethod
+from typing import Any
 
 import numpy as np
 from rclpy.serialization import deserialize_message, serialize_message
@@ -30,7 +30,6 @@ class ControllerImplBase(ABC):
             are passed here as arguments of the function.
 
         """
-        pass
 
     @staticmethod
     def get_topic_type(topic_type: str) -> Any:
@@ -89,7 +88,6 @@ class ControllerImplBase(ABC):
         Args:
             _ (String): Deserialized message passed to the callback.
         """
-        pass
 
     def on_publish(self, topic_name: str) -> bytes:
         """Queries for a getter callback for the published message, serializes
@@ -118,11 +116,9 @@ class ControllerImplBase(ABC):
         Returns:
             np.array: Control signal returned from the controller.
         """
-        pass
 
     @abstractmethod
     def on_post_update(self) -> None:
         """Callback called after ``on_update`` finished. Used to perform
         non time-critical actions.
         """
-        pass
