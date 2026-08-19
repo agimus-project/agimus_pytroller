@@ -13,6 +13,7 @@
 
 #include "agimus_pytroller/visibility.hpp"
 #include "controller_interface/chainable_controller_interface.hpp"
+#include "controller_interface/version.h"
 #include "rclcpp/serialized_message.hpp"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
@@ -70,8 +71,11 @@ class AgimusPytroller
   std::vector<hardware_interface::CommandInterface>
   on_export_reference_interfaces() override;
 
-  controller_interface::return_type update_reference_from_subscribers()
-      override;
+  controller_interface::return_type update_reference_from_subscribers(
+#if CONTROLLER_INTERFACE_VERSION_GTE(3, 0, 0)
+      const rclcpp::Time& time, const rclcpp::Duration& period
+#endif
+      ) override;
 
   std::shared_ptr<rclcpp::SerializedMessage> fetch_message_once(
       const std::shared_ptr<rclcpp::Node>& temp_node,

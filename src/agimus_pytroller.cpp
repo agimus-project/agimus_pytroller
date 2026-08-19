@@ -370,7 +370,11 @@ AgimusPytroller::on_export_reference_interfaces() {
 }
 
 controller_interface::return_type
-AgimusPytroller::update_reference_from_subscribers() {
+AgimusPytroller::update_reference_from_subscribers(
+#if CONTROLLER_INTERFACE_VERSION_GTE(3, 0, 0)
+    const rclcpp::Time& time, const rclcpp::Duration& period
+#endif
+) {
   return controller_interface::return_type::OK;
 }
 
