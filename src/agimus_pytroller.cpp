@@ -1,4 +1,10 @@
+#include "agimus_pytroller/agimus_pytroller.hpp"
+
 #include <dlfcn.h>
+#include <pybind11/embed.h>
+#include <pybind11/numpy.h>
+#include <pybind11/pytypes.h>
+#include <pybind11/stl.h>
 
 #include <memory>
 #include <ratio>
@@ -6,21 +12,13 @@
 #include <variant>
 #include <vector>
 
-#include <pybind11/embed.h>
-#include <pybind11/numpy.h>
-#include <pybind11/pytypes.h>
-#include <pybind11/stl.h>
-
 #include "controller_interface/helpers.hpp"
 #include "hardware_interface/loaned_command_interface.hpp"
 #include "rclcpp/logging.hpp"
 #include "rclcpp/serialization.hpp"
 #include "rclcpp/serialized_message.hpp"
 #include "rclcpp/wait_for_message.hpp"
-
 #include "std_msgs/msg/string.hpp"
-
-#include "agimus_pytroller/agimus_pytroller.hpp"
 
 namespace py = pybind11;
 
@@ -36,7 +34,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_init() {
   try {
     param_listener_ = std::make_shared<ParamListener>(get_node());
     params_ = param_listener_->get_params();
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     fprintf(stderr, "Exception thrown when reading ROS parameters: %s \n",
             e.what());
     return controller_interface::CallbackReturn::ERROR;
@@ -44,7 +42,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_init() {
 
   try {
     python_module_ = py::module_::import(params_.python_module.c_str());
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     fprintf(stderr, "Exception thrown when importing python module '%s': %s \n",
             params_.python_module.c_str(), e.what());
     return controller_interface::CallbackReturn::ERROR;
@@ -54,17 +52,16 @@ controller_interface::CallbackReturn AgimusPytroller::on_init() {
 }
 
 controller_interface::CallbackReturn AgimusPytroller::on_configure(
-    const rclcpp_lifecycle::State & /*previous_state*/) {
-
+    const rclcpp_lifecycle::State& /*previous_state*/) {
   // Create temporary ROS node to be able to spin it
   auto temp_node = std::make_shared<rclcpp::Node>(
       get_node()->get_name() + std::string("_init_subscriber"));
   std::vector<std::string> topic_types;
   py::list message_payloads;
-  for (const std::string &subscriber_name :
+  for (const std::string& subscriber_name :
        params_.initialization_data_topics) {
     try {
-      const auto &topic_params =
+      const auto& topic_params =
           params_.initialization_data_topics_map.at(subscriber_name);
       topic_types.push_back(topic_params.topic_type);
 
@@ -72,7 +69,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
       const auto payload = msg_to_buffer(msg);
       py::bytes py_payload(payload.data(), payload.size());
       message_payloads.append(py_payload);
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
       RCLCPP_ERROR(get_node()->get_logger(), e.what());
       return controller_interface::CallbackReturn::ERROR;
     }
@@ -80,8 +77,9 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
 
   try {
     controller_object_ = python_module_.attr("ControllerImpl")(
-        py::cast(params_.initialization_data_topics), py::cast(topic_types), message_payloads);
-  } catch (const std::exception &e) {
+        py::cast(params_.initialization_data_topics), py::cast(topic_types),
+        message_payloads);
+  } catch (const std::exception& e) {
     RCLCPP_ERROR(get_node()->get_logger(),
                  "Filed to initialize python object 'ControllerImpl': %s\n ",
                  e.what());
@@ -90,7 +88,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
 
   try {
     on_update_python_funct_ = controller_object_.attr("on_update");
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     RCLCPP_ERROR(get_node()->get_logger(),
                  "Filed to find 'ControllerImpl.on_update': %s\n", e.what());
     return controller_interface::CallbackReturn::ERROR;
@@ -98,7 +96,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
 
   try {
     on_post_update_python_funct_ = controller_object_.attr("on_post_update");
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     RCLCPP_ERROR(get_node()->get_logger(),
                  "Filed to find 'ControllerImpl.on_post_update': %s\n",
                  e.what());
@@ -107,16 +105,16 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
 
   try {
     on_message_python_funct_ = controller_object_.attr("on_message");
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     RCLCPP_ERROR(get_node()->get_logger(),
                  "Filed to find 'ControllerImpl.on_message': %s\n", e.what());
     return controller_interface::CallbackReturn::ERROR;
   }
 
   for (const std::string subscriber_name : params_.subscribed_topics) {
-    const auto &topic_params =
+    const auto& topic_params =
         params_.subscribed_topics_map.at(subscriber_name);
-    const auto &topic_type = topic_params.topic_type;
+    const auto& topic_type = topic_params.topic_type;
     const auto topic_name = topic_params.topic_name;
 
     topic_subscribers_.push_back(get_node()->create_generic_subscription(
@@ -127,7 +125,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
             std::pair<std::string, std::vector<char>> message_data = {
                 topic_name, payload};
             topic_queue_.push(message_data);
-          } catch (const std::exception &e) {
+          } catch (const std::exception& e) {
             RCLCPP_ERROR(
                 get_node()->get_logger(),
                 "Error calling message callback for topic: %s. Reason: %s\n ",
@@ -139,7 +137,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
     try {
       controller_object_.attr("build_message_map")(
           topic_name, topic_type, topic_params.python_function_name);
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
       RCLCPP_ERROR(get_node()->get_logger(),
                    "Filed to find 'ControllerImpl.build_message_map': %s\n",
                    e.what());
@@ -159,12 +157,12 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
     rclcpp::SerializedMessage serialized_msg;
     msg_serializer.serialize_message(&message, &serialized_msg);
     py::bytes msg_py_bytes(
-        reinterpret_cast<const char *>(
+        reinterpret_cast<const char*>(
             serialized_msg.get_rcl_serialized_message().buffer),
         serialized_msg.size());
 
     on_message_python_funct_("dummy_topic", msg_py_bytes);
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     RCLCPP_ERROR(
         get_node()->get_logger(),
         "Filed to perform priming call on 'ControllerImpl.on_message()': %s\n",
@@ -174,15 +172,15 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
 
   try {
     on_publish_python_funct_ = controller_object_.attr("on_publish");
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     RCLCPP_ERROR(get_node()->get_logger(),
                  "Filed to find 'ControllerImpl.on_publish': %s\n", e.what());
     return controller_interface::CallbackReturn::ERROR;
   }
 
   for (const std::string publisher_name : params_.published_topics) {
-    const auto &topic_params = params_.published_topics_map.at(publisher_name);
-    const auto &topic_type = topic_params.topic_type;
+    const auto& topic_params = params_.published_topics_map.at(publisher_name);
+    const auto& topic_type = topic_params.topic_type;
     const auto topic_name = topic_params.topic_name;
 
     topic_publishers_.push_back(std::make_pair(
@@ -193,7 +191,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
     try {
       controller_object_.attr("build_message_map")(
           topic_name, topic_type, topic_params.python_msg_getter_name);
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
       RCLCPP_ERROR(get_node()->get_logger(),
                    "Filed to find 'ControllerImpl.build_message_map': %s\n",
                    e.what());
@@ -204,7 +202,7 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
     // time to stall it for several calls
     try {
       py::bytes data = on_publish_python_funct_(topic_name);
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
       RCLCPP_ERROR(
           get_node()->get_logger(),
           "Filed perform priming call on 'ControllerImpl.on_publish()': %s\n",
@@ -218,22 +216,21 @@ controller_interface::CallbackReturn AgimusPytroller::on_configure(
 }
 
 inline std::vector<char> AgimusPytroller::msg_to_buffer(
-    const std::shared_ptr<rclcpp::SerializedMessage> &msg) {
+    const std::shared_ptr<rclcpp::SerializedMessage>& msg) {
   const auto serialized_msg = msg->get_rcl_serialized_message();
-  std::vector<char> payload(serialized_msg.buffer,
-                            serialized_msg.buffer +
-                                serialized_msg.buffer_length);
+  std::vector<char> payload(
+      serialized_msg.buffer,
+      serialized_msg.buffer + serialized_msg.buffer_length);
   return payload;
 }
 
 std::shared_ptr<rclcpp::SerializedMessage> AgimusPytroller::fetch_message_once(
-    const std::shared_ptr<rclcpp::Node> &temp_node,
-    const std::string &subscriber_name) {
-
-  const auto &topic_params =
+    const std::shared_ptr<rclcpp::Node>& temp_node,
+    const std::string& subscriber_name) {
+  const auto& topic_params =
       params_.initialization_data_topics_map.at(subscriber_name);
 
-  const auto &topic_type = topic_params.topic_type;
+  const auto& topic_type = topic_params.topic_type;
   const auto topic_name = topic_params.topic_name;
 
   std::shared_ptr<rclcpp::SerializedMessage> topic_data;
@@ -283,8 +280,7 @@ AgimusPytroller::state_interface_configuration() const {
 }
 
 controller_interface::CallbackReturn AgimusPytroller::on_activate(
-    const rclcpp_lifecycle::State & /*previous_state*/) {
-
+    const rclcpp_lifecycle::State& /*previous_state*/) {
   py_states_ =
       std::make_unique<py::array_t<double>>(params_.input_interfaces.size());
 
@@ -306,19 +302,19 @@ controller_interface::CallbackReturn AgimusPytroller::on_activate(
   }
 
   // Populate loaned interfaces
-  for (auto &interface : command_reference_interfaces_) {
+  for (auto& interface : command_reference_interfaces_) {
     loaned_reference_interfaces_.push_back(LoanedCommandInterface(interface));
   }
 
   ordered_input_interfaces_.reserve(params_.input_interfaces.size());
-  for (const std::string &name : params_.input_interfaces) {
-    for (auto &interface : state_interfaces_) {
+  for (const std::string& name : params_.input_interfaces) {
+    for (auto& interface : state_interfaces_) {
       if (name == interface.get_name()) {
         ordered_input_interfaces_.push_back(std::ref(interface));
         break;
       }
     }
-    for (auto &interface : loaned_reference_interfaces_) {
+    for (auto& interface : loaned_reference_interfaces_) {
       if (name == interface.get_name()) {
         ordered_input_interfaces_.push_back(std::ref(interface));
         break;
@@ -348,8 +344,7 @@ bool AgimusPytroller::on_set_chained_mode(bool /*chained_mode*/) {
 }
 
 controller_interface::CallbackReturn AgimusPytroller::on_deactivate(
-    const rclcpp_lifecycle::State & /*previous_state*/) {
-
+    const rclcpp_lifecycle::State& /*previous_state*/) {
   cancellation_token_ = true;
   control_spinner_thread_->join();
   // TODO cleanup memory on deactivation
@@ -379,9 +374,8 @@ AgimusPytroller::update_reference_from_subscribers() {
   return controller_interface::return_type::OK;
 }
 
-controller_interface::return_type
-AgimusPytroller::update_and_write_commands(const rclcpp::Time &time,
-                                           const rclcpp::Duration &period) {
+controller_interface::return_type AgimusPytroller::update_and_write_commands(
+    const rclcpp::Time& time, const rclcpp::Duration& period) {
   cycle_++;
   // Read last results of the controller
   if (cycle_ >= params_.python_downsample_factor || first_python_call_) {
@@ -424,7 +418,7 @@ AgimusPytroller::update_and_write_commands(const rclcpp::Time &time,
     std::copy(new_commands_.begin(), new_commands_.end(),
               new_commands_rt_.begin());
 
-    auto &state = ordered_input_interfaces_;
+    auto& state = ordered_input_interfaces_;
     for (std::size_t i = 0; i < state.size(); i++) {
       if (std::holds_alternative<LoanedStateInterfaceRef>(state[i])) {
         auto s = std::get<LoanedStateInterfaceRef>(state[i]);
@@ -475,7 +469,7 @@ void AgimusPytroller::py_control_spinner() {
         break;
       }
       auto state_buffer = py_states_->request();
-      double *state_ptr = static_cast<double *>(state_buffer.ptr);
+      double* state_ptr = static_cast<double*>(state_buffer.ptr);
       std::copy(last_state_.begin(), last_state_.end(), state_ptr);
 
       try {
@@ -484,7 +478,7 @@ void AgimusPytroller::py_control_spinner() {
               on_update_python_funct_(*py_states_);
 
           const auto command_buffer = py_commands.request();
-          const double *command_ptr = static_cast<double *>(command_buffer.ptr);
+          const double* command_ptr = static_cast<double*>(command_buffer.ptr);
 
           {
             std::lock_guard lk(solver_stop_mtx_);
@@ -496,7 +490,7 @@ void AgimusPytroller::py_control_spinner() {
           }
         }
 
-      } catch (py::error_already_set &e) {
+      } catch (py::error_already_set& e) {
         RCLCPP_ERROR(get_node()->get_logger(),
                      "Error when calling 'ControllerImpl.on_update()': %s",
                      e.what());
@@ -513,10 +507,10 @@ void AgimusPytroller::py_control_spinner() {
       // Perform task that less require real-time strictness
       on_post_update_python_funct_();
 
-      for (const auto &[topic_name, publisher] : topic_publishers_) {
+      for (const auto& [topic_name, publisher] : topic_publishers_) {
         py::bytes data = on_publish_python_funct_(topic_name);
 
-        char *serialized_buffer;
+        char* serialized_buffer;
         Py_ssize_t length;
         if (PYBIND11_BYTES_AS_STRING_AND_SIZE(data.ptr(), &serialized_buffer,
                                               &length)) {
@@ -546,7 +540,7 @@ void AgimusPytroller::py_control_spinner() {
   }
 }
 
-} // namespace agimus_pytroller
+}  // namespace agimus_pytroller
 
 #include "pluginlib/class_list_macros.hpp"
 

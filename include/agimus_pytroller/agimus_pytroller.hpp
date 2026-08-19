@@ -1,14 +1,15 @@
 #ifndef AGIMUS_PYTROLLER_LOCAL__AGIMUS_PYTROLLER_LOCAL_HPP_
 #define AGIMUS_PYTROLLER_LOCAL__AGIMUS_PYTROLLER_LOCAL_HPP_
 
+#include <pybind11/embed.h>
+#include <pybind11/numpy.h>
+
+#include <agimus_pytroller/agimus_pytroller_parameters.hpp>
 #include <memory>
 #include <queue>
 #include <string>
 #include <variant>
 #include <vector>
-
-#include <pybind11/embed.h>
-#include <pybind11/numpy.h>
 
 #include "agimus_pytroller/visibility.hpp"
 #include "controller_interface/chainable_controller_interface.hpp"
@@ -16,14 +17,12 @@
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
 
-#include <agimus_pytroller/agimus_pytroller_parameters.hpp>
-
 namespace py = pybind11;
 
 namespace agimus_pytroller {
 class AgimusPytroller
     : public controller_interface::ChainableControllerInterface {
-public:
+ public:
   AGIMUS_PYTROLLER_LOCAL
   AgimusPytroller();
 
@@ -31,37 +30,36 @@ public:
   ~AgimusPytroller() = default;
 
   AGIMUS_PYTROLLER_LOCAL
-  controller_interface::InterfaceConfiguration
-  command_interface_configuration() const override;
+  controller_interface::InterfaceConfiguration command_interface_configuration()
+      const override;
 
   AGIMUS_PYTROLLER_LOCAL
-  controller_interface::InterfaceConfiguration
-  state_interface_configuration() const override;
+  controller_interface::InterfaceConfiguration state_interface_configuration()
+      const override;
 
   AGIMUS_PYTROLLER_LOCAL
   controller_interface::CallbackReturn on_init() override;
 
   AGIMUS_PYTROLLER_LOCAL
-  controller_interface::CallbackReturn
-  on_configure(const rclcpp_lifecycle::State &previous_state) override;
+  controller_interface::CallbackReturn on_configure(
+      const rclcpp_lifecycle::State& previous_state) override;
 
   AGIMUS_PYTROLLER_LOCAL
-  controller_interface::CallbackReturn
-  on_activate(const rclcpp_lifecycle::State &previous_state) override;
+  controller_interface::CallbackReturn on_activate(
+      const rclcpp_lifecycle::State& previous_state) override;
 
   AGIMUS_PYTROLLER_LOCAL
-  controller_interface::CallbackReturn
-  on_deactivate(const rclcpp_lifecycle::State &previous_state) override;
+  controller_interface::CallbackReturn on_deactivate(
+      const rclcpp_lifecycle::State& previous_state) override;
 
   AGIMUS_PYTROLLER_LOCAL
   bool on_set_chained_mode(bool chained_mode) override;
 
   AGIMUS_PYTROLLER_LOCAL
-  controller_interface::return_type
-  update_and_write_commands(const rclcpp::Time &time,
-                            const rclcpp::Duration &period) override;
+  controller_interface::return_type update_and_write_commands(
+      const rclcpp::Time& time, const rclcpp::Duration& period) override;
 
-protected:
+ protected:
   using LoanedCommandInterface = hardware_interface::LoanedCommandInterface;
   using LoanedCommandInterfaceRef =
       std::reference_wrapper<LoanedCommandInterface>;
@@ -72,14 +70,14 @@ protected:
   std::vector<hardware_interface::CommandInterface>
   on_export_reference_interfaces() override;
 
-  controller_interface::return_type
-  update_reference_from_subscribers() override;
+  controller_interface::return_type update_reference_from_subscribers()
+      override;
 
-  std::shared_ptr<rclcpp::SerializedMessage>
-  fetch_message_once(const std::shared_ptr<rclcpp::Node> &temp_node,
-                     const std::string &topic_name);
-  inline std::vector<char>
-  msg_to_buffer(const std::shared_ptr<rclcpp::SerializedMessage> &msg);
+  std::shared_ptr<rclcpp::SerializedMessage> fetch_message_once(
+      const std::shared_ptr<rclcpp::Node>& temp_node,
+      const std::string& topic_name);
+  inline std::vector<char> msg_to_buffer(
+      const std::shared_ptr<rclcpp::SerializedMessage>& msg);
 
   void py_control_spinner();
   std::unique_ptr<std::thread> control_spinner_thread_;
@@ -130,6 +128,6 @@ protected:
       ordered_input_interfaces_;
 };
 
-} // namespace agimus_pytroller
+}  // namespace agimus_pytroller
 
-#endif // AGIMUS_PYTROLLER_LOCAL__AGIMUS_PYTROLLER_LOCAL_HPP_
+#endif  // AGIMUS_PYTROLLER_LOCAL__AGIMUS_PYTROLLER_LOCAL_HPP_
