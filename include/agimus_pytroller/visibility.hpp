@@ -19,7 +19,7 @@
 // All symbols are hidden by default in windows
 #define AGIMUS_PYTROLLER_LOCAL
 
-#else // defined _WIN32 || defined __CYGWIN__
+#else  // defined _WIN32 || defined __CYGWIN__
 
 #if __GNUC__ >= 4
 #define AGIMUS_PYTROLLER_EXPORT __attribute__((visibility("default")))
@@ -31,7 +31,7 @@
 #define AGIMUS_PYTROLLER_LOCAL
 #endif
 
-#endif // defined _WIN32 || defined __CYGWIN__
+#endif  // defined _WIN32 || defined __CYGWIN__
 
 // Define AGIMUS_PYTROLLER_[PUBLIC, PRIVATE] based the following
 // definitions forwarded by the build system:
@@ -50,7 +50,7 @@
 
 #define AGIMUS_PYTROLLER_PRIVATE AGIMUS_PYTROLLER_LOCAL
 
-#else // AGIMUS_PYTROLLER_IS_SHARED
+#else  // AGIMUS_PYTROLLER_IS_SHARED
 
 // LFC lib is static (.a)
 #define AGIMUS_PYTROLLER_PRIVATE
@@ -58,4 +58,4 @@
 
 #endif
 
-#endif // AGIMUS_PYTROLLER__VISIBILITY_HPP_
+#endif  // AGIMUS_PYTROLLER__VISIBILITY_HPP_
