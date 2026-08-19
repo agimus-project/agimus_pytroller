@@ -8,6 +8,10 @@
     inputs.gepetto.lib.mkFlakoboros inputs (
       { lib, ... }:
       {
+        rosDistros = [
+          "humble"
+          "jazzy"
+        ];
         rosOverrideAttrs.agimus-pytroller = {
           src = lib.fileset.toSource {
             root = ./.;
