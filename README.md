@@ -147,7 +147,6 @@ class ControllerImpl(ControllerImplBase):
         """Optional callback invoked after time-critical section of `on_update`."""
         self._cnt += 1
         self._target_angles[1] = sin(self._cnt / 1000.0)
-
 ```
 
 > [!IMPORTANT]
